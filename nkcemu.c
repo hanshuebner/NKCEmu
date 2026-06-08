@@ -19,7 +19,7 @@
  ***************************************************************************/
 
 /**
- * Emulator für den NDR-Klein-Computer
+ * Emulator fï¿½r den NDR-Klein-Computer
  * Ausbaustufe SBC2+GDP64+KEY+ROA64
  * Basis: Z80-Emulator z80pack von Udo Munk
  */
@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
     register char *s, *p;
     register char *pn = argv[0];
     CAS_FILE=0;
-    bool windowed=false;
+    bool windowed=true;     /* default to windowed; -f forces fullscreen */
     
     while (--argc > 0 && (*++argv)[0] == '-')
     {
@@ -195,13 +195,18 @@ int main(int argc, char *argv[])
 		    if ((CAS_FILE = open(buf, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) == -1)
 		    {
 			puts("can't open CAS file");
-			return;
+			return 1;
 		    }
 		    break;
 		}
-		case 'w':
+		case 'w':           /* windowed (now the default; kept for compat) */
 		{
 		    windowed=true;
+		    break;
+		}
+		case 'F':           /* force fullscreen */
+		{
+		    windowed=false;
 		    break;
 		}
 		case 'a':
@@ -224,7 +229,8 @@ int main(int argc, char *argv[])
                     puts("\tx = load and execute filename");
                     puts("\tb = load EPROM content starting at 0x0000");
 		    puts("\tc = filename for CAS emulation");
-		    puts("\tw = start in windowed mode");
+		    puts("\tw = start in windowed mode (default)");
+		    puts("\tF = start in fullscreen mode");
 		    puts("\ta = start address");
                     exit(1);
             }

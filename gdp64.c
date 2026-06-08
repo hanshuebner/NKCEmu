@@ -24,7 +24,7 @@
  * since handling of  key events is also done by SDL lib, KEY functions
  * reside in this file too
  */
-#include <SDL/SDL.h>
+#include <SDL.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdbool.h>
@@ -34,6 +34,11 @@
 #include "nkcglobal.h"
 
 extern void resetVsyncTimer();
+extern void exit_io(void);
+
+/* SDL2 needs an explicit pixel format shared by the offscreen pages and the
+ * streaming texture, so SDL_UpdateTexture is a straight byte copy. */
+#define NKC_PIXFMT SDL_PIXELFORMAT_ARGB8888
 
 /* global variables GDP64 */
 BYTE status=0x04;            /* status of the gdp, here initialized with b00000100 */
@@ -52,7 +57,10 @@ WORD lineStyle[4]={0xFFFF,   /* Line styles of EF9366 in hexadecimal representat
 
 
 /* global variables SDL */
-SDL_Surface *screen,*pages[4];
+SDL_Window   *window=NULL;       /* SDL2: the on-screen window */
+SDL_Renderer *renderer=NULL;     /* SDL2: its renderer */
+SDL_Texture  *texture=NULL;      /* SDL2: streaming texture we upload pages to */
+SDL_Surface  *pages[4];          /* the four EF9366 offscreen drawing pages */
 SDL_Color bg={0x00,0x00,0x00,0xFF}; Uint32 bg32=0x000000FF;
 SDL_Color fg={0x10,0xA4,0x13,0xFF}; Uint32 fg32=0x10A413FF;
 int screenModeChanged=0;     /* 1 if system just finished switching from fs to window or vice versa */
@@ -67,7 +75,8 @@ char keyBuf[100];             /* remember 100 chars maximum */
 int bufCount=0;               /* how many chars are unread */
 int readPos=0;                /* position for next char to read? */
 int writePos=0;               /* position where next key will be stored */
-SDL_GrabMode grabMode=SDL_GRAB_OFF; /* initial grab mode */
+SDL_bool grabMode=SDL_FALSE;  /* initial mouse-grab mode */
+SDL_bool fullScreen=SDL_FALSE;/* current fullscreen state */
 
 /*
   Begin of all SDL related functions
@@ -781,11 +790,14 @@ int gdp64_set_vsync(BYTE vs)
     if (vs!=0)
     {
         status=(status | 2);
-        /* now blit actual readed page if something has changed */
+        /* now show actual read page if something has changed */
         if (contentChanged==1)
         {
-            SDL_BlitSurface(pages[actualReadPage],NULL,screen,NULL);
-            SDL_UpdateRect(screen,0,0,0,0);
+            SDL_Surface *p=pages[actualReadPage];
+            SDL_UpdateTexture(texture,NULL,p->pixels,p->pitch);
+            SDL_RenderClear(renderer);
+            SDL_RenderCopy(renderer,texture,NULL,NULL);
+            SDL_RenderPresent(renderer);
             contentChanged=0;
         }
     }
@@ -807,46 +819,75 @@ int gdp64_set_vsync(BYTE vs)
 BYTE key_p68_in()
 {
     SDL_Event event;
-    
-    /* first read Key if available */
 
+    /* poll one event per call (as the SDL1.2 version did).  Printable keys
+     * arrive as SDL_TEXTINPUT (ASCII in event.text.text[0]); control keys and
+     * the emulator hot-keys come as SDL_KEYDOWN.  keyReg68 holds the last code
+     * with bit7 clear until key_p69_in() clears it back to 0x80 ("no key"). */
     if (SDL_PollEvent(&event))
     {
-        if (event.type==SDL_KEYDOWN)
+        switch (event.type)
         {
-            /* first evaluate simulation keys */
-            if (event.key.keysym.sym==SDLK_F1)
+            case SDL_QUIT:
+                exit_io();
+                exit(0);
+                break;
+
+            case SDL_TEXTINPUT:
+                /* take the first byte; NKC BASIC is 7-bit ASCII */
+                keyReg68 = (BYTE)event.text.text[0];
+                break;
+
+            case SDL_KEYDOWN:
             {
-                SDL_WM_ToggleFullScreen(screen);
-                screenModeChanged=1;
+                SDL_Keycode sym = event.key.keysym.sym;
+                /* emulator hot-keys first */
+                if (sym==SDLK_F1)
+                {
+                    fullScreen = fullScreen ? SDL_FALSE : SDL_TRUE;
+                    SDL_SetWindowFullscreen(window,
+                        fullScreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                    screenModeChanged=1;
+                    break;
+                }
+                if (sym==SDLK_F12)          /* NMI: vector CPU to $0000 */
+                {
+                    *--STACK = (PC - ram);
+                    PC = ram;
+                    break;
+                }
+                if (sym==SDLK_F10)          /* toggle mouse grab */
+                {
+                    grabMode = grabMode ? SDL_FALSE : SDL_TRUE;
+                    SDL_SetWindowGrab(window, grabMode);
+                    break;
+                }
+                if (sym==SDLK_F2 && CAS_FILE!=0)
+                {
+                    lseek(CAS_FILE, 0, SEEK_SET);
+                    break;
+                }
+                /* control keys that produce no SDL_TEXTINPUT */
+                switch (sym)
+                {
+                    case SDLK_RETURN:
+                    case SDLK_KP_ENTER:    keyReg68=0x0D; break;
+                    case SDLK_BACKSPACE:   keyReg68=0x08; break;
+                    case SDLK_DELETE:      keyReg68=0x7F; break;
+                    case SDLK_TAB:         keyReg68=0x09; break;
+                    case SDLK_ESCAPE:      keyReg68=0x1B; break;
+                    default:               /* printable -> handled by TEXTINPUT */
+                        break;
+                }
+                break;
             }
-            if (event.key.keysym.sym==SDLK_F12)
-            {
-                *--STACK = (PC - ram);
-                PC = ram;
-            }
-            if (event.key.keysym.sym==SDLK_F10)
-	    {
-		if (grabMode==SDL_GRAB_ON) {
-		  grabMode=SDL_GRAB_OFF;
-		} else {
-		  grabMode=SDL_GRAB_ON;
-		}
-		SDL_WM_GrabInput(grabMode);
-	    }
-	    if (event.key.keysym.sym==SDLK_F2 && CAS_FILE!=0)
-	    {
-		lseek(CAS_FILE, 0,SEEK_SET);
-	    }
-            if (event.key.keysym.unicode==0)
+
+            case SDL_KEYUP:
                 keyReg68=0x80;
-            else
-                keyReg68=event.key.keysym.unicode;
-            
-        }
-        else
-        {
-            keyReg68=0x80;
+                break;
+
+            default:
+                break;
         }
     }
     return keyReg68;
@@ -875,38 +916,63 @@ void initGDP64(bool windowed)
 {
     int i;
     /* Initialize Graphics Window */
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTTHREAD) == -1)
+    if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
         fprintf(stderr,"Can't init SDL:  %s\n", SDL_GetError());
         exit(1);
     }
     atexit(SDL_Quit);
-    screen = SDL_SetVideoMode(512, 256, 32, SDL_SWSURFACE);
-    if (screen == NULL)
+
+    /* Open a 2x-scaled window; the renderer's logical size keeps the EF9366's
+     * native 512x256 coordinate space regardless of the actual window size. */
+    window = SDL_CreateWindow("GDP64 graphics output for NKC",
+                              SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                              1024, 512, SDL_WINDOW_RESIZABLE);
+    if (window == NULL)
     {
-        fprintf(stderr,"Can't set video mode: %s\n", SDL_GetError());
+        fprintf(stderr,"Can't create window: %s\n", SDL_GetError());
+        exit(1);
+    }
+    renderer = SDL_CreateRenderer(window, -1,
+                                  SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (renderer == NULL)
+        renderer = SDL_CreateRenderer(window, -1, 0);   /* fall back to software */
+    if (renderer == NULL)
+    {
+        fprintf(stderr,"Can't create renderer: %s\n", SDL_GetError());
+        exit(1);
+    }
+    SDL_RenderSetLogicalSize(renderer, 512, 256);
+
+    texture = SDL_CreateTexture(renderer, NKC_PIXFMT,
+                                SDL_TEXTUREACCESS_STREAMING, 512, 256);
+    if (texture == NULL)
+    {
+        fprintf(stderr,"Can't create texture: %s\n", SDL_GetError());
         exit(1);
     }
 
-    /* create the four pages of the EF9366 */
+    /* create the four pages of the EF9366, in the texture's pixel format so
+     * uploading a page is a straight memcpy */
     for (i=0; i<4; i++)
     {
-        pages[i]=SDL_CreateRGBSurface(SDL_SWSURFACE,512,256,32,0,0,0,0);
+        pages[i]=SDL_CreateRGBSurfaceWithFormat(0,512,256,32,NKC_PIXFMT);
         if (pages[i]==NULL)
         {
-            fprintf(stderr,"Cant't create page %d for EF9366. SDL-Error:%s\n",SDL_GetError());
+            fprintf(stderr,"Can't create page %d for EF9366. SDL-Error: %s\n",i,SDL_GetError());
             exit(2);
         }
+        SDL_FillRect(pages[i], NULL,
+                     SDL_MapRGB(pages[i]->format, bg.r, bg.g, bg.b));
     }
+
     if (!windowed) {
-      SDL_WM_ToggleFullScreen(screen);
+      fullScreen=SDL_TRUE;
+      SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
       screenModeChanged=1;
     }
-    /* set window title */
-    SDL_WM_SetCaption("GDP64 graphics output for NKC", NULL);
-    /* Disable Mouse-Cursor */
-    SDL_WM_GrabInput(grabMode);
+    /* Disable Mouse-Cursor and start receiving text input */
+    SDL_SetWindowGrab(window, grabMode);
     SDL_ShowCursor(SDL_DISABLE);
-    /* Enable UNICODE string input for keyboard */
-    SDL_EnableUNICODE(1);
+    SDL_StartTextInput();
 }

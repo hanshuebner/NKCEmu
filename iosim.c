@@ -37,8 +37,11 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <SDL.h>
 #include "sim.h"
 #include "simglb.h"
+
+extern void initGDP64(bool);
 
 /*
  *	Forward declarations of the I/O functions
@@ -76,6 +79,8 @@ extern BYTE cas_pCA_in();
 extern void cas_pCA_out(BYTE);
 extern BYTE cas_pCB_in();
 extern void cas_pCB_out(BYTE);
+extern BYTE vdip_p30_in(void);
+extern void vdip_p30_out(BYTE);
 
 /*
  *	This two arrayw contains function pointers
@@ -139,6 +144,8 @@ void init_io(bool windowed)
     out_port[0xCA]=cas_pCA_out;
     in_port[0xCB]=cas_pCB_in;
     out_port[0xCB]=cas_pCB_out;
+    in_port[0x30]=vdip_p30_in;
+    out_port[0x30]=vdip_p30_out;
     // initialize GDP64 card
     initGDP64(windowed);
     //f=fopen("iolog.txt","w");

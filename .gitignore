@@ -8,3 +8,4 @@ CMakeCache.txt
 CMakeFiles/                                                                            
 build/                                                                                 
 nkcemu 
+resources/nkc_usb.bin
