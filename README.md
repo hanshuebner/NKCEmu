@@ -2,7 +2,8 @@
 
 A fork of Torsten Evers' [NKCEmu](https://github.com/Nightwulf/NKCEmu)
 (NDR-Klein-Computer emulator: Z80 + GDP64 + KEY + ROA64), with two additions
-for working on the `basicusb` BASIC⇄USB project in the parent directory:
+for working on the `basicusb` BASIC⇄USB project (the `nkc-load-save`
+repository, expected as a sibling directory `../nkc-load-save`):
 
 1. **Ported from SDL 1.2 to SDL2** (SDL 1.2 no longer builds on current
    macOS/Linux). Rendering now goes through an `SDL_Window` / `SDL_Renderer` /
@@ -33,10 +34,10 @@ fullscreen at runtime, **F10** toggles mouse grab, **F12** is NMI-to-$0000.
 
 `resources/nkc_usb.bin` is the 32 KiB boot image with the USB-enabled
 Grundprogramm 3.1, RDK 8K-BASIC 1.3, and the `basicusb` EPROM at `$6000`.
-Rebuild it after assembling `../basicusb.rom` (`make` in the parent dir):
+Rebuild it after assembling `basicusb.rom` (`make` in `../nkc-load-save`):
 
 ```sh
-python3 make_image.py
+python3 make_image.py            # reads ../nkc-load-save (or $NKC_BASIC_DIR)
 ./build/nkcemu -bresources/nkc_usb.bin
 ```
 

@@ -2,19 +2,25 @@
 """Build the 32 KiB NKCEmu boot image for the USB-BASIC setup.
 
 Layout (the lower 32 KiB the real machine has in EPROM):
-    $0000  Grundprogramm 3.1 (USB-enabled)   ../roms/MONITOR.rom
+    $0000  Grundprogramm 3.1 (USB-enabled)   roms/MONITOR.rom
     $2000  free                              ($FF fill)
-    $4000  RDK 8K-BASIC 1.3                  ../roms/BASIC.rom
-    $6000  BASIC<->USB SAVE/LOAD EPROM       ../basicusb.rom
+    $4000  RDK 8K-BASIC 1.3                  roms/BASIC.rom
+    $6000  BASIC<->USB SAVE/LOAD EPROM       basicusb.rom
 
-Run from the nkcemu/ directory after `make` has produced ../basicusb.rom:
-    python3 make_image.py
+The ROMs and the assembled basicusb.rom come from the nkc-load-save project.
+By default it is found as a sibling directory (../nkc-load-save); override with
+the NKC_BASIC_DIR environment variable or a path argument:
+
+    python3 make_image.py [path-to-nkc-load-save]
+
 -> writes resources/nkc_usb.bin, loadable with:  ./build/nkcemu -bresources/nkc_usb.bin
 """
 import os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = (sys.argv[1] if len(sys.argv) > 1 else
+        os.environ.get("NKC_BASIC_DIR") or
+        os.path.join(os.path.dirname(HERE), "nkc-load-save"))
 
 SLOTS = [
     (0x0000, os.path.join(ROOT, "roms", "MONITOR.rom")),
