@@ -75,6 +75,7 @@ int contentChanged=0;        /* something new written? */
  * (NKC_CON_DEBUG=1), giving a text transcript of what the program prints. */
 static unsigned char *injbuf = NULL;
 static long injlen = 0, injpos = 0;
+static int  injgap = 0;                 /* "key released" polls before next char */
 static int  con_debug = -1;             /* -1 = not yet checked */
 
 void key_inject_file(const char *path)
@@ -855,10 +856,13 @@ BYTE key_p68_in()
      * injected (-k) stream are unaffected. */
     static int caps_lock = 1;
 
-    /* keyboard injection (-K): present the current scripted byte until the
-     * strobe is cleared by reading port 69 (key_p69_in advances). */
-    if (injbuf && injpos < injlen)
+    /* keyboard injection (-K): present the current scripted byte, then a short
+     * "released" gap (no key) after each one, so the guest's between-line and
+     * ESCAPE polls don't swallow scripted characters. */
+    if (injbuf && injpos < injlen) {
+        if (injgap > 0) { injgap--; return 0x80; }
         return injbuf[injpos] & 0x7F;   /* bit7 clear = char present */
+    }
 
     /* poll one event per call (as the SDL1.2 version did).  Printable keys
      * arrive as SDL_TEXTINPUT (ASCII in event.text.text[0]); control keys and
@@ -958,9 +962,11 @@ void key_p68_out(BYTE b)
 BYTE key_p69_in()
 {
     /* reading port 69 clears the strobe; in injection mode that consumes the
-     * current scripted byte and advances to the next. */
-    if (injbuf && injpos < injlen)
+     * current scripted byte and advances to the next, with a release gap. */
+    if (injbuf && injpos < injlen) {
         injpos++;
+        injgap = 20000;             /* "key up" window before the next char */
+    }
     keyReg68=0x80;
     return keyReg69;
 }
