@@ -40,6 +40,7 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <unistd.h>
 #include "sim.h"
 #include "simglb.h"
 
@@ -173,6 +174,37 @@ static void cmd_read_stream(const char *name)
     DBG("VDIP: RDF '%s' -> %d bytes\n", name, n);
 }
 
+static void cmd_delete(const char *name)
+{
+    char path[512];
+    make_path(path, sizeof path, name);
+    int r = unlink(path);
+    DBG("VDIP: DLF '%s' -> %s\n", name, r == 0 ? "ok" : "FAIL");
+    rx_prompt();
+}
+
+static void cmd_rename(const char *arg)
+{
+    char buf[128];
+    strncpy(buf, arg, sizeof buf - 1);
+    buf[sizeof buf - 1] = 0;
+    char *old = buf;
+    while (*old == ' ') old++;
+    char *sp = strchr(old, ' ');
+    if (sp) {
+        *sp = 0;
+        char *nw = sp + 1;
+        char oldp[512], newp[512];
+        make_path(oldp, sizeof oldp, old);
+        make_path(newp, sizeof newp, nw);
+        int r = rename(oldp, newp);
+        DBG("VDIP: REN '%s' -> '%s' %s\n", old, nw, r == 0 ? "ok" : "FAIL");
+    } else {
+        DBG("VDIP: REN bad args '%s'\n", arg);
+    }
+    rx_prompt();
+}
+
 /* feed one byte written by the CPU into the command state machine */
 static void vdap_write(unsigned char b)
 {
@@ -186,6 +218,8 @@ static void vdap_write(unsigned char b)
         case 0x09:  /* OPW */
         case 0x0A:  /* CLF */
         case 0x04:  /* RDF */
+        case 0x06:  /* REN (rename) */
+        case 0x07:  /* DLF (delete) */
         case 0x10:  vstate = ST_ARG; break;                 /* mode/echo */
         default:    /* unknown single-byte command: just re-prompt */
                     rx_prompt(); break;
@@ -200,6 +234,8 @@ static void vdap_write(unsigned char b)
             case 0x09: cmd_open_write(arg); break;
             case 0x0A: cmd_close(arg);      break;
             case 0x04: cmd_read_stream(arg);break;          /* no prompt */
+            case 0x06: cmd_rename(arg);     break;
+            case 0x07: cmd_delete(arg);     break;
             case 0x10: rx_prompt();         break;
             default:   rx_prompt();         break;
             }
