@@ -967,6 +967,13 @@ BYTE key_p68_in()
                     case SDLK_DELETE:      keyReg68=0x7F; break;
                     case SDLK_TAB:         keyReg68=0x09; break;
                     case SDLK_ESCAPE:      keyReg68=0x1B; break;
+                    /* BBC copy-cursor editing: arrows move the copy cursor,
+                     * End is the COPY key. */
+                    case SDLK_LEFT:        keyReg68=0x1C; break;
+                    case SDLK_RIGHT:       keyReg68=0x1D; break;
+                    case SDLK_DOWN:        keyReg68=0x1E; break;
+                    case SDLK_UP:          keyReg68=0x1F; break;
+                    case SDLK_END:         keyReg68=0x05; break;
                     default:               /* printable -> handled by TEXTINPUT */
                         break;
                 }
