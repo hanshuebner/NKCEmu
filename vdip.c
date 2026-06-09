@@ -43,11 +43,17 @@
 #include "sim.h"
 #include "simglb.h"
 
-/* ----- where emulated USB-stick files live ----- */
+/* ----- where emulated USB-stick files live -----
+ * precedence: -u command-line option > NKC_USB_DIR env > current directory. */
+static const char *vdip_dir_override = NULL;   /* set by vdip_set_dir() */
+
+void vdip_set_dir(const char *path) { vdip_dir_override = path; }
+
 static const char *vdip_dir(void)
 {
+    if (vdip_dir_override && *vdip_dir_override) return vdip_dir_override;
     const char *d = getenv("NKC_USB_DIR");
-    return (d && *d) ? d : "usb";
+    return (d && *d) ? d : ".";
 }
 
 static FILE *dbg = NULL;
@@ -161,9 +167,10 @@ static void cmd_read_stream(const char *name)
     FILE *f = fopen(path, "rb");
     DBG("VDIP: RDF '%s' -> %s\n", name, f ? "ok" : "FAIL");
     if (!f) { return; }             /* no data -> monitor sees EOF */
-    int c;
-    while ((c = fgetc(f)) != EOF) rx_push((unsigned char)c);
+    int c, n = 0;
+    while ((c = fgetc(f)) != EOF) { rx_push((unsigned char)c); n++; }
     fclose(f);
+    DBG("VDIP: RDF '%s' -> %d bytes\n", name, n);
 }
 
 /* feed one byte written by the CPU into the command state machine */

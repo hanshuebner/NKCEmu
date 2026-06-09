@@ -26,6 +26,7 @@
  */
 #include <SDL.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include "sim.h"
@@ -67,6 +68,27 @@ int screenModeChanged=0;     /* 1 if system just finished switching from fs to w
 int actualWritePage=0;       /* on which page do we write at the moment? */
 int actualReadPage=0;        /* which page is shown at the moment? */
 int contentChanged=0;        /* something new written? */
+
+/* ---- test/debug hooks ----
+ * Keyboard injection: feed bytes from a file as if typed (-K option), so BASIC
+ * can be driven headlessly.  Console echo: log every glyph the GDP draws
+ * (NKC_CON_DEBUG=1), giving a text transcript of what the program prints. */
+static unsigned char *injbuf = NULL;
+static long injlen = 0, injpos = 0;
+static int  con_debug = -1;             /* -1 = not yet checked */
+
+void key_inject_file(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) { fprintf(stderr, "nkcemu: can't open key file %s\n", path); return; }
+    fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+    if (n > 0) {
+        injbuf = malloc(n);
+        injlen = fread(injbuf, 1, n, f);
+        injpos = 0;
+    }
+    fclose(f);
+}
 
 /* KEY specific stuff */
 BYTE keyReg68=0x80;           /* initialize with a value which has bit 7 set */
@@ -500,6 +522,8 @@ void gdp64_p70_out(BYTE b)
     /* accept commands for the EF9366 and call the SDL implementations for them */
     if (b>=0x20 && b<=0x7F)                         /* was an ASCII character */
     {
+        if (con_debug < 0) con_debug = getenv("NKC_CON_DEBUG") ? 1 : 0;
+        if (con_debug) { fputc(b, stderr); fflush(stderr); }
         DrawChar(b);
         status=(status | 4);
         return;
@@ -787,6 +811,13 @@ void gdp64_p7B_out(BYTE b)
 
 int gdp64_set_vsync(BYTE vs)
 {
+    /* Pump the windowing system from the CPU loop (this runs every ~20ms),
+     * not only when the program reads the keyboard.  Otherwise a program that
+     * never polls the keyboard -- e.g. the boot loader spinning on the USB
+     * stick -- would leave the window unmapped/unresponsive.  SDL_PumpEvents
+     * does not consume events, so key_p68_in's SDL_PollEvent still sees them. */
+    SDL_PumpEvents();
+
     if (vs!=0)
     {
         status=(status | 2);
@@ -819,6 +850,11 @@ int gdp64_set_vsync(BYTE vs)
 BYTE key_p68_in()
 {
     SDL_Event event;
+
+    /* keyboard injection (-K): present the current scripted byte until the
+     * strobe is cleared by reading port 69 (key_p69_in advances). */
+    if (injbuf && injpos < injlen)
+        return injbuf[injpos] & 0x7F;   /* bit7 clear = char present */
 
     /* poll one event per call (as the SDL1.2 version did).  Printable keys
      * arrive as SDL_TEXTINPUT (ASCII in event.text.text[0]); control keys and
@@ -900,6 +936,10 @@ void key_p68_out(BYTE b)
 
 BYTE key_p69_in()
 {
+    /* reading port 69 clears the strobe; in injection mode that consumes the
+     * current scripted byte and advances to the next. */
+    if (injbuf && injpos < injlen)
+        injpos++;
     keyReg68=0x80;
     return keyReg69;
 }
@@ -921,7 +961,8 @@ void initGDP64(bool windowed)
         fprintf(stderr,"Can't init SDL:  %s\n", SDL_GetError());
         exit(1);
     }
-    atexit(SDL_Quit);
+    /* NB: do NOT atexit(SDL_Quit) -- exit_io() already calls SDL_Quit(); a
+     * second teardown double-frees SDL's allocations and crashes on exit. */
 
     /* Open a 2x-scaled window; the renderer's logical size keeps the EF9366's
      * native 512x256 coordinate space regardless of the actual window size. */

@@ -47,6 +47,8 @@ extern void
 
 init_io(bool), exit_io(void);
 extern int exatoi(char *);
+extern void vdip_set_dir(const char *);
+extern void key_inject_file(const char *);
 int CAS_FILE=0;
 
 /*
@@ -199,6 +201,30 @@ int main(int argc, char *argv[])
 		    }
 		    break;
 		}
+		case 'u':           /* directory used as the emulated USB stick */
+		{
+		    static char usbdir[1024];
+		    s++;
+		    p = usbdir;
+		    while (*s && (size_t)(p - usbdir) < sizeof(usbdir) - 1)
+			*p++ = *s++;
+		    *p = '\0';
+		    s--;
+		    vdip_set_dir(usbdir);
+		    break;
+		}
+		case 'k':           /* inject keystrokes from a file (testing) */
+		{
+		    static char keyfn[1024];
+		    s++;
+		    p = keyfn;
+		    while (*s && (size_t)(p - keyfn) < sizeof(keyfn) - 1)
+			*p++ = *s++;
+		    *p = '\0';
+		    s--;
+		    key_inject_file(keyfn);
+		    break;
+		}
 		case 'w':           /* windowed (now the default; kept for compat) */
 		{
 		    windowed=true;
@@ -229,6 +255,7 @@ int main(int argc, char *argv[])
                     puts("\tx = load and execute filename");
                     puts("\tb = load EPROM content starting at 0x0000");
 		    puts("\tc = filename for CAS emulation");
+		    puts("\tu = directory used as the USB stick (default: .)");
 		    puts("\tw = start in windowed mode (default)");
 		    puts("\tF = start in fullscreen mode");
 		    puts("\ta = start address");

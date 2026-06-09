@@ -87,9 +87,12 @@ static void quit_int(int sig)
 
 static void term_int(int sig)
 {
-	exit_io();
-	int_off();
+	/* Signal context: only async-signal-safe calls.  Do NOT call SDL_Quit()
+	 * (via exit_io) here -- tearing SDL down from a signal handler frees the
+	 * heap in an unsafe context and crashes intermittently.  Restore the
+	 * terminal and _exit; the OS reclaims SDL's window/memory on exit. */
 	tcsetattr(0, TCSADRAIN, &old_term);
-	puts("\nKilled by user");
-	exit(0);
+	static const char msg[] = "\nKilled by user\n";
+	write(2, msg, sizeof(msg) - 1);
+	_exit(0);
 }
