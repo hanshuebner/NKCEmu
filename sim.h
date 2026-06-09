@@ -27,7 +27,7 @@
  *	The following defines may be activated, commented or modified
  *	by user for her/his own purpose.
  */
-/*#define WANT_INT*/	/* activate CPU's interrupts */
+#define WANT_INT	/* activate CPU's interrupts (needed for the SER2 DUART) */
 #define WANT_SPC	/* activate SP over-/underrun handling 0000<->FFFF */
 #define WANT_PCC	/* activate PC overrun handling FFFF->0000 */
 #define	CNTL_C		/* cntl-c will stop running emulation */

@@ -422,7 +422,22 @@ void cpu(void)
         {
             gdp64_set_vsync(0);
         }
-        
+
+        /* service the emulated SER2 DUART (sockets + interrupt line),
+           throttled to ~2 ms so we don't issue socket syscalls every
+           instruction.  akttime was just sampled above. */
+        {
+            extern void ser2_service(void);
+            static struct timeval ser2_last;
+            /* seed on first use: getDiffMillies overflows its int result if
+               t1 is epoch 0, which would wedge the throttle permanently. */
+            if (ser2_last.tv_sec == 0) ser2_last = akttime;
+            if (getDiffMillies(&ser2_last, &akttime) >= 2) {
+                ser2_last = akttime;
+                ser2_service();
+            }
+        }
+
 #ifdef WANT_TIM		/* check for start address of runtime measurement */
 		if (PC == t_start && !t_flag) {
 			t_flag = 1;	/* switch measurement on */

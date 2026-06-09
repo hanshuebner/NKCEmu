@@ -85,6 +85,9 @@ extern BYTE timer_p31_in(void), timer_p32_in(void),
             timer_p33_in(void), timer_p34_in(void);
 extern void timer_p31_out(BYTE), timer_p32_out(BYTE),
             timer_p33_out(BYTE), timer_p34_out(BYTE);
+extern BYTE (*ser2_in[16])(void);
+extern void (*ser2_out[16])(BYTE);
+extern void ser2_init(void);
 
 /*
  *	This two arrayw contains function pointers
@@ -154,6 +157,12 @@ void init_io(bool windowed)
     in_port[0x32]=timer_p32_in;   out_port[0x32]=timer_p32_out;
     in_port[0x33]=timer_p33_in;   out_port[0x33]=timer_p33_out;
     in_port[0x34]=timer_p34_in;   out_port[0x34]=timer_p34_out;
+    // SER2 (88C681 DUART) at base 0x90 -> ports 0x90..0x9F
+    ser2_init();
+    for (i = 0; i < 16; i++) {
+        in_port[0x90+i]  = ser2_in[i];
+        out_port[0x90+i] = ser2_out[i];
+    }
     // initialize GDP64 card
     initGDP64(windowed);
     //f=fopen("iolog.txt","w");

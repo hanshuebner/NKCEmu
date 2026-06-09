@@ -11,6 +11,34 @@ repository, expected as a sibling directory `../nkc-load-save`):
 2. **An emulated VDIP1 (FTDI VNC1L) USB card on I/O port `$30`** — the piece
    the upstream emulator lacked — so the Grundprogramm's USB routines, and
    hence `CALL 24576/24579` from BASIC, actually transfer files.
+3. **An emulated SER2 R2 serial card (XR88C681 DUART) at base `$90`** — see
+   *Serial (SER2)* below.
+
+## Serial (SER2)
+
+The SER2 R2 card (a 2681/68681-type dual UART) is emulated at I/O base `$90`
+(ports `$90..$9F`). Its two channels are each exposed as a **TCP listening
+socket on localhost**, so you can attach a terminal with e.g. `nc 127.0.0.1
+2681`:
+
+| Channel | Default TCP port | Override env var      |
+|---------|------------------|-----------------------|
+| A       | 2681             | `NKCEMU_SER2_PORTA`   |
+| B       | 2682             | `NKCEMU_SER2_PORTB`   |
+
+* **Buffering:** while no client is connected, bytes the NKC transmits are
+  held (up to 1 MiB, oldest-preserved) and flushed when you connect — so
+  output produced right after start-up is not lost before you attach.
+* **Interrupts:** the DUART's `INTRN` is modelled as wired to the Z80 `/INT`
+  line, so an interrupt-driven driver (unmask RxRDY in IMR, `IM 1`) works; the
+  guest vectors to `$0038` on a received byte. This needs `WANT_INT`, now
+  enabled in `sim.h`.
+* The register model is faithful enough to run `SER2.BAS` (the probe in the
+  `nkc-bbc-basic` repo): counter liveness, MR read-back, IVR scratch,
+  on-chip local loopback, and the ISR/IMR interrupt-logic test.
+
+The card lives in `ser2.c`; it is serviced (sockets + interrupt line) every
+~2 ms from the CPU loop in `sim1.c`.
 
 ## Build
 
