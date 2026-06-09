@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(nkcemu C)
 
-add_executable(nkcemu sim1.c sim2.c sim3.c sim4.c sim5.c sim6.c sim7.c simctl.c simfun.c simglb.c simint.c gdp64.c iosim.c disas.c cas.c vdip.c nkcemu.c)
+add_executable(nkcemu sim1.c sim2.c sim3.c sim4.c sim5.c sim6.c sim7.c simctl.c simfun.c simglb.c simint.c gdp64.c iosim.c disas.c cas.c vdip.c timer.c nkcemu.c)
 
 # Prefer pkg-config: on Homebrew/Linux it links the SDL2 dylib by its absolute
 # install name, so no rpath fixups are needed.  Fall back to the SDL2 CMake

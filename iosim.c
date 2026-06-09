@@ -81,6 +81,10 @@ extern BYTE cas_pCB_in();
 extern void cas_pCB_out(BYTE);
 extern BYTE vdip_p30_in(void);
 extern void vdip_p30_out(BYTE);
+extern BYTE timer_p31_in(void), timer_p32_in(void),
+            timer_p33_in(void), timer_p34_in(void);
+extern void timer_p31_out(BYTE), timer_p32_out(BYTE),
+            timer_p33_out(BYTE), timer_p34_out(BYTE);
 
 /*
  *	This two arrayw contains function pointers
@@ -146,6 +150,10 @@ void init_io(bool windowed)
     out_port[0xCB]=cas_pCB_out;
     in_port[0x30]=vdip_p30_in;
     out_port[0x30]=vdip_p30_out;
+    in_port[0x31]=timer_p31_in;   out_port[0x31]=timer_p31_out;
+    in_port[0x32]=timer_p32_in;   out_port[0x32]=timer_p32_out;
+    in_port[0x33]=timer_p33_in;   out_port[0x33]=timer_p33_out;
+    in_port[0x34]=timer_p34_in;   out_port[0x34]=timer_p34_out;
     // initialize GDP64 card
     initGDP64(windowed);
     //f=fopen("iolog.txt","w");
