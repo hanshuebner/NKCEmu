@@ -41,6 +41,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <fnmatch.h>
 #include "sim.h"
 #include "simglb.h"
 
@@ -139,26 +140,39 @@ static void cmd_close(const char *name)
     rx_prompt();
 }
 
-/* DIR: the monitor's "USB Inhalt" sends 0x01<CR> and reads a listing of
- * CR-terminated names (a leading throwaway byte first).  We do not append a
- * prompt: the routine ignores read errors and just keeps reading, so once the
- * FIFO empties the over-reads return CR (see vdip_miso) and pad cleanly. */
+static int dir_cmp(const void *a, const void *b)
+{
+    return strcasecmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+/* DIR: sends a leading throwaway byte, then the matching names sorted and each
+ * CR-terminated.  An optional shell-style pattern (e.g. "*.BAS") filters the
+ * listing; empty pattern lists everything. */
 static void cmd_dir(const char *pattern)
 {
-    (void)pattern;
+    while (*pattern == ' ') pattern++;
+    const char *pat = (*pattern && *pattern != 0x0D) ? pattern : "*";
+
     rx_push('\r');                  /* leading byte the monitor discards */
     DIR *d = opendir(vdip_dir());
     if (!d) { DBG("VDIP: DIR (empty/none)\n"); return; }
-    struct dirent *e;
+
+    static char *names[2048];
     int n = 0;
-    while ((e = readdir(d))) {
+    struct dirent *e;
+    while ((e = readdir(d)) && n < (int)(sizeof names / sizeof names[0])) {
         if (e->d_name[0] == '.') continue;          /* skip . .. dotfiles */
-        rx_push_str(e->d_name);
-        rx_push('\r');
-        n++;
+        if (fnmatch(pat, e->d_name, FNM_CASEFOLD) != 0) continue;
+        names[n++] = strdup(e->d_name);
     }
     closedir(d);
-    DBG("VDIP: DIR -> %d entries\n", n);
+    qsort(names, n, sizeof names[0], dir_cmp);
+    for (int i = 0; i < n; i++) {
+        rx_push_str(names[i]);
+        rx_push('\r');
+        free(names[i]);
+    }
+    DBG("VDIP: DIR pat='%s' -> %d entries\n", pat, n);
 }
 
 static void cmd_read_stream(const char *name)
