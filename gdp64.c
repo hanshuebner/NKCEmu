@@ -107,8 +107,13 @@ SDL_bool fullScreen=SDL_FALSE;/* current fullscreen state */
 */
 void DrawPixel(SDL_Surface *sc, int x, int y,Uint8 R, Uint8 G,Uint8 B)
 {
-    Uint32 color = SDL_MapRGB(sc->format, R, G, B);
-    
+    Uint32 color;
+    /* clip to the page -- the EF9366 line/vector routines can be handed
+     * off-screen coordinates (relative draws, programs drawing out of bounds);
+     * writing outside the surface is a bus error. */
+    if (x < 0 || x >= 512 || y < 0 || y >= 256) return;
+    color = SDL_MapRGB(sc->format, R, G, B);
+
     switch (sc->format->BytesPerPixel)
     {
         case 1:
