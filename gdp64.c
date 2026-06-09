@@ -822,19 +822,20 @@ int gdp64_set_vsync(BYTE vs)
     if (vs!=0)
     {
         status=(status | 2);
-        /* composite all four pages (OR) so independent planes -- e.g. text on
-         * page 0 and graphics on page 1 -- are shown overlaid.  Empty pixels
-         * are black (rgb 0), so ORing is the union of the lit pixels. */
+        /* composite the current view page (text -- pages 0/1 double-buffered)
+         * with the graphics plane (page 2), so they appear overlaid.  Empty
+         * pixels are black (rgb 0), so ORing is the union of the lit pixels.
+         * The off-screen text back-buffer is NOT shown, giving flicker-free
+         * scrolling: the screen is redrawn on the hidden page, then the view
+         * flips to it. */
         if (contentChanged==1)
         {
             static Uint32 comp[512*256];
-            Uint32 *p0=(Uint32*)pages[0]->pixels;
-            Uint32 *p1=(Uint32*)pages[1]->pixels;
-            Uint32 *p2=(Uint32*)pages[2]->pixels;
-            Uint32 *p3=(Uint32*)pages[3]->pixels;
+            Uint32 *pv=(Uint32*)pages[actualReadPage]->pixels;  /* view page */
+            Uint32 *pg=(Uint32*)pages[2]->pixels;               /* graphics  */
             int i;
             for (i=0; i<512*256; i++)
-                comp[i] = p0[i] | p1[i] | p2[i] | p3[i];
+                comp[i] = pv[i] | pg[i];
             SDL_UpdateTexture(texture,NULL,comp,512*4);
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer,texture,NULL,NULL);
