@@ -102,7 +102,7 @@ static void rx_prompt(void) { rx_push_str(">\r"); }
 /* ===================================================================== *
  *  VDAP command parser (consumes bytes written to the data register)    *
  * ===================================================================== */
-enum { ST_CMD, ST_ARG, ST_WRF_HDR, ST_WRF_DATA };
+enum { ST_CMD, ST_ARG, ST_WRF_HDR, ST_WRF_DATA, ST_FIXED };
 static int  vstate = ST_CMD;
 static int  vcmd = 0;
 static char arg[64];
@@ -110,6 +110,12 @@ static int  arglen = 0;
 static int  hdrcnt = 0;
 static unsigned long wrf_len = 0, wrf_rem = 0;
 static FILE *wfile = NULL;          /* file currently open for writing */
+
+/* --- BBC data-file channels (OPENIN/OPENOUT/OPENUP -> BGET#/BPUT#/PTR# ...) --- */
+#define NCHAN 4
+static FILE *chan[NCHAN + 1];       /* chan[1..NCHAN]; 0 unused (= "no channel") */
+static unsigned char fbuf[8];       /* fixed-length command bytes */
+static int  fixneed = 0, fixgot = 0;
 
 /* build the host path for a (possibly space-padded) VDAP name */
 static void make_path(char *out, size_t n, const char *name)
@@ -219,6 +225,82 @@ static void cmd_rename(const char *arg)
     rx_prompt();
 }
 
+/* FOPEN (0x11): arg = "<mode> <name>", mode R/W/U.  Replies with a channel
+ * number byte (1..NCHAN, or 0 on failure) followed by the prompt. */
+static void cmd_fopen(const char *a)
+{
+    char mode = *a ? *a : 'R';
+    const char *name = a + 1;
+    while (*name == ' ') name++;
+    const char *fmode = mode == 'W' ? "w+b" : mode == 'U' ? "r+b" : "rb";
+    int ch = 0;
+    for (int i = 1; i <= NCHAN; i++) if (!chan[i]) { ch = i; break; }
+    if (ch) {
+        char path[512];
+        make_path(path, sizeof path, name);
+        if (mode == 'W') mkdir(vdip_dir(), 0777);
+        chan[ch] = fopen(path, fmode);
+        if (!chan[ch]) ch = 0;
+    }
+    DBG("VDIP: FOPEN '%c' '%s' -> channel %d\n", mode, name, ch);
+    rx_push((unsigned char)ch);
+    rx_prompt();
+}
+
+static void push_u32(unsigned long v)   /* little-endian (LSB first) */
+{
+    rx_push(v & 0xFF); rx_push((v >> 8) & 0xFF);
+    rx_push((v >> 16) & 0xFF); rx_push((v >> 24) & 0xFF);
+}
+
+/* dispatch a fixed-length channel command once all its bytes are in fbuf[] */
+static void cmd_fixed(int cmd)
+{
+    int ch = fbuf[0];
+    FILE *f = (ch >= 1 && ch <= NCHAN) ? chan[ch] : NULL;
+    switch (cmd) {
+    case 0x12:                                  /* FCLOSE (0 = all) */
+        if (ch == 0) { for (int i = 1; i <= NCHAN; i++)
+                           if (chan[i]) { fclose(chan[i]); chan[i] = NULL; } }
+        else if (f)  { fclose(f); chan[ch] = NULL; }
+        rx_prompt();
+        break;
+    case 0x13: {                                /* FBGET -> status, data */
+        int c = f ? fgetc(f) : EOF;
+        if (c == EOF) { rx_push(1); rx_push(0); }
+        else          { rx_push(0); rx_push((unsigned char)c); }
+        rx_prompt();
+        break; }
+    case 0x14:                                  /* FBPUT channel,data */
+        if (f) fputc(fbuf[1], f);
+        rx_prompt();
+        break;
+    case 0x15:                                  /* FSEEK channel,pos32 (LE) */
+        if (f) { unsigned long p = fbuf[1] | (fbuf[2]<<8) |
+                                   (fbuf[3]<<16) | ((unsigned long)fbuf[4]<<24);
+                 fseek(f, (long)p, SEEK_SET); }
+        rx_prompt();
+        break;
+    case 0x16:                                  /* FTELL -> pos32 (LE) */
+        push_u32(f ? (unsigned long)ftell(f) : 0);
+        rx_prompt();
+        break;
+    case 0x17: {                                /* FEXT -> size32 (LE) */
+        unsigned long sz = 0;
+        if (f) { long cur = ftell(f); fseek(f, 0, SEEK_END);
+                 sz = (unsigned long)ftell(f); fseek(f, cur, SEEK_SET); }
+        push_u32(sz);
+        rx_prompt();
+        break; }
+    case 0x18: {                                /* FEOF -> 1 byte (1 = at EOF) */
+        int eof = 1;
+        if (f) { int c = fgetc(f); if (c != EOF) { ungetc(c, f); eof = 0; } }
+        rx_push((unsigned char)eof);
+        rx_prompt();
+        break; }
+    }
+}
+
 /* feed one byte written by the CPU into the command state machine */
 static void vdap_write(unsigned char b)
 {
@@ -234,7 +316,16 @@ static void vdap_write(unsigned char b)
         case 0x04:  /* RDF */
         case 0x06:  /* REN (rename) */
         case 0x07:  /* DLF (delete) */
+        case 0x11:  /* FOPEN (data file) */
         case 0x10:  vstate = ST_ARG; break;                 /* mode/echo */
+        case 0x12:  /* FCLOSE  */ fixneed = 1; goto fixstart;
+        case 0x13:  /* FBGET   */ fixneed = 1; goto fixstart;
+        case 0x14:  /* FBPUT   */ fixneed = 2; goto fixstart;
+        case 0x15:  /* FSEEK   */ fixneed = 5; goto fixstart;
+        case 0x16:  /* FTELL   */ fixneed = 1; goto fixstart;
+        case 0x17:  /* FEXT    */ fixneed = 1; goto fixstart;
+        case 0x18:  /* FEOF    */ fixneed = 1;
+        fixstart:   fixgot = 0; vstate = ST_FIXED; break;
         default:    /* unknown single-byte command: just re-prompt */
                     rx_prompt(); break;
         }
@@ -250,6 +341,7 @@ static void vdap_write(unsigned char b)
             case 0x04: cmd_read_stream(arg);break;          /* no prompt */
             case 0x06: cmd_rename(arg);     break;
             case 0x07: cmd_delete(arg);     break;
+            case 0x11: cmd_fopen(arg);      break;
             case 0x10: rx_prompt();         break;
             default:   rx_prompt();         break;
             }
@@ -257,6 +349,11 @@ static void vdap_write(unsigned char b)
         } else if (arglen < (int)sizeof(arg) - 1) {
             arg[arglen++] = (char)b;
         }
+        break;
+
+    case ST_FIXED:
+        fbuf[fixgot++] = b;
+        if (fixgot >= fixneed) { cmd_fixed(vcmd); vstate = ST_CMD; }
         break;
 
     case ST_WRF_HDR:
@@ -304,6 +401,7 @@ static void vdip_hw_reset(void)
 {
     DBG("VDIP: hardware reset\n");
     if (wfile) { fclose(wfile); wfile = NULL; }
+    for (int i = 1; i <= NCHAN; i++) if (chan[i]) { fclose(chan[i]); chan[i] = NULL; }
     vstate = ST_CMD;
     rx_reset();
     rx_prompt();                    /* power-on banner the monitor waits for */

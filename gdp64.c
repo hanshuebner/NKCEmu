@@ -970,7 +970,9 @@ BYTE key_p68_in()
                     /* BBC copy-cursor editing: arrows move the copy cursor,
                      * End is the COPY key. */
                     case SDLK_LEFT:        keyReg68=0x1C; break;
-                    case SDLK_RIGHT:       keyReg68=0x1D; break;
+                    /* Shift+Right doubles as COPY (macOS keyboards have no End) */
+                    case SDLK_RIGHT:       keyReg68=(event.key.keysym.mod & KMOD_SHIFT)
+                                                    ? 0x05 : 0x1D; break;
                     case SDLK_DOWN:        keyReg68=0x1E; break;
                     case SDLK_UP:          keyReg68=0x1F; break;
                     case SDLK_END:         keyReg68=0x05; break;
