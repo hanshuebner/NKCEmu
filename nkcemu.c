@@ -186,7 +186,7 @@ int main(int argc, char *argv[])
                       "\tb = load EPROM image at $0000\n"
                       "\tc = file for CAS emulation\n"
                       "\ta = start-address offset (hex)\n"
-                      "\tu = directory used as the USB stick (default: .)\n"
+                      "\tu = directory used as the USB stick (repeat to merge; default: .)\n"
                       "\tk = inject keystrokes from a file\n", stderr);
                 return 1;
         }

@@ -46,16 +46,35 @@
 #include "simglb.h"
 
 /* ----- where emulated USB-stick files live -----
- * precedence: -u command-line option > NKC_USB_DIR env > current directory. */
-static const char *vdip_dir_override = NULL;   /* set by vdip_set_dir() */
+ * The "stick" can be a MERGE of several host directories: each -u option adds
+ * one (e.g. `-u build -u examples`).  Reads search the directories in order and
+ * use the first match; writes (and mkdir) go to the first directory.  This lets
+ * the stick combine the build output (BASIC.BIN) with the examples without
+ * copying or symlinking.
+ * Precedence when no -u is given: NKC_USB_DIR env > current directory. */
+#define VDIP_MAXDIRS 16
+static const char *vdip_dirs[VDIP_MAXDIRS];
+static int vdip_ndirs = 0;
 
-void vdip_set_dir(const char *path) { vdip_dir_override = path; }
+void vdip_set_dir(const char *path)
+{
+    if (path && *path && vdip_ndirs < VDIP_MAXDIRS)
+        vdip_dirs[vdip_ndirs++] = path;
+}
 
+/* primary directory: used for writes, mkdir, and as the fallback for reads */
 static const char *vdip_dir(void)
 {
-    if (vdip_dir_override && *vdip_dir_override) return vdip_dir_override;
+    if (vdip_ndirs) return vdip_dirs[0];
     const char *d = getenv("NKC_USB_DIR");
     return (d && *d) ? d : ".";
+}
+
+/* number of directories to scan and the i-th one (covers the no-`-u` case) */
+static int vdip_dircount(void) { return vdip_ndirs ? vdip_ndirs : 1; }
+static const char *vdip_diri(int i)
+{
+    return vdip_ndirs ? vdip_dirs[i] : vdip_dir();
 }
 
 static FILE *dbg = NULL;
@@ -117,14 +136,32 @@ static FILE *chan[NCHAN + 1];       /* chan[1..NCHAN]; 0 unused (= "no channel")
 static unsigned char fbuf[8];       /* fixed-length command bytes */
 static int  fixneed = 0, fixgot = 0;
 
-/* build the host path for a (possibly space-padded) VDAP name */
-static void make_path(char *out, size_t n, const char *name)
+/* basename of a (possibly space-padded) VDAP name, with path separators dropped */
+static const char *vdip_basename(const char *name)
 {
     while (*name == ' ') name++;            /* skip leading space(s) */
-    /* keep the basename only, drop any path separators for safety */
     const char *base = name;
     for (const char *p = name; *p; p++)
         if (*p == '/' || *p == '\\') base = p + 1;
+    return base;
+}
+
+/* host path for writing/creating: always the primary directory */
+static void make_path(char *out, size_t n, const char *name)
+{
+    snprintf(out, n, "%s/%s", vdip_dir(), vdip_basename(name));
+}
+
+/* host path for reading: the first directory that actually has the file
+ * (falls back to the primary directory's path, so fopen then fails -> EOF) */
+static void make_read_path(char *out, size_t n, const char *name)
+{
+    const char *base = vdip_basename(name);
+    for (int i = 0; i < vdip_dircount(); i++) {
+        struct stat st;
+        snprintf(out, n, "%s/%s", vdip_diri(i), base);
+        if (stat(out, &st) == 0 && S_ISREG(st.st_mode)) return;
+    }
     snprintf(out, n, "%s/%s", vdip_dir(), base);
 }
 
@@ -160,18 +197,25 @@ static void cmd_dir(const char *pattern)
     const char *pat = (*pattern && *pattern != 0x0D) ? pattern : "*";
 
     rx_push('\r');                  /* leading byte the monitor discards */
-    DIR *d = opendir(vdip_dir());
-    if (!d) { DBG("VDIP: DIR (empty/none)\n"); return; }
 
     static char *names[2048];
+    const int cap = (int)(sizeof names / sizeof names[0]);
     int n = 0;
-    struct dirent *e;
-    while ((e = readdir(d)) && n < (int)(sizeof names / sizeof names[0])) {
-        if (e->d_name[0] == '.') continue;          /* skip . .. dotfiles */
-        if (fnmatch(pat, e->d_name, FNM_CASEFOLD) != 0) continue;
-        names[n++] = strdup(e->d_name);
+    /* union of all stick directories; first occurrence of a name wins */
+    for (int di = 0; di < vdip_dircount(); di++) {
+        DIR *d = opendir(vdip_diri(di));
+        if (!d) continue;
+        struct dirent *e;
+        while ((e = readdir(d)) && n < cap) {
+            if (e->d_name[0] == '.') continue;          /* skip . .. dotfiles */
+            if (fnmatch(pat, e->d_name, FNM_CASEFOLD) != 0) continue;
+            int dup = 0;
+            for (int k = 0; k < n; k++)
+                if (strcasecmp(names[k], e->d_name) == 0) { dup = 1; break; }
+            if (!dup) names[n++] = strdup(e->d_name);
+        }
+        closedir(d);
     }
-    closedir(d);
     qsort(names, n, sizeof names[0], dir_cmp);
     for (int i = 0; i < n; i++) {
         rx_push_str(names[i]);
@@ -184,7 +228,7 @@ static void cmd_dir(const char *pattern)
 static void cmd_read_stream(const char *name)
 {
     char path[512];
-    make_path(path, sizeof path, name);
+    make_read_path(path, sizeof path, name);
     FILE *f = fopen(path, "rb");
     DBG("VDIP: RDF '%s' -> %s\n", name, f ? "ok" : "FAIL");
     if (!f) { return; }             /* no data -> monitor sees EOF */
@@ -197,7 +241,7 @@ static void cmd_read_stream(const char *name)
 static void cmd_delete(const char *name)
 {
     char path[512];
-    make_path(path, sizeof path, name);
+    make_read_path(path, sizeof path, name);   /* delete it wherever it lives */
     int r = unlink(path);
     DBG("VDIP: DLF '%s' -> %s\n", name, r == 0 ? "ok" : "FAIL");
     rx_prompt();
@@ -215,8 +259,8 @@ static void cmd_rename(const char *arg)
         *sp = 0;
         char *nw = sp + 1;
         char oldp[512], newp[512];
-        make_path(oldp, sizeof oldp, old);
-        make_path(newp, sizeof newp, nw);
+        make_read_path(oldp, sizeof oldp, old);    /* find the source anywhere */
+        make_path(newp, sizeof newp, nw);          /* new name in primary dir  */
         int r = rename(oldp, newp);
         DBG("VDIP: REN '%s' -> '%s' %s\n", old, nw, r == 0 ? "ok" : "FAIL");
     } else {
@@ -237,8 +281,8 @@ static void cmd_fopen(const char *a)
     for (int i = 1; i <= NCHAN; i++) if (!chan[i]) { ch = i; break; }
     if (ch) {
         char path[512];
-        make_path(path, sizeof path, name);
-        if (mode == 'W') mkdir(vdip_dir(), 0777);
+        if (mode == 'W') { make_path(path, sizeof path, name); mkdir(vdip_dir(), 0777); }
+        else             make_read_path(path, sizeof path, name);  /* R/U: any dir */
         chan[ch] = fopen(path, fmode);
         if (!chan[ch]) ch = 0;
     }

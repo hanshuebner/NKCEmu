@@ -82,10 +82,19 @@ Files SAVEd from BASIC become real files on the host, and LOAD reads them
 back. The "stick" is just a directory:
 
 * default: `./usb/` (created on first SAVE),
-* override with the `NKC_USB_DIR` environment variable.
+* override with the `NKC_USB_DIR` environment variable,
+* or one or more `-u DIR` options.
+
+**Merging directories.** Pass `-u` more than once and the stick is the *union*
+of those directories — reads search them in order (first match wins), writes
+(`SAVE`) and the directory listing's new files go to the first. This lets a
+project keep its build output and its example programs separate yet present them
+as one stick, with no copying or symlinks:
 
 ```sh
-NKC_USB_DIR=/path/to/myfiles ./build/nkcemu -bresources/nkc_usb.bin
+./build/nkcemu -b ../nkc-bbc-basic/build/boot.rom \
+               -u ../nkc-bbc-basic/build \
+               -u ../nkc-bbc-basic/examples
 ```
 
 Set `NKC_USB_DEBUG=1` to trace VDAP commands (OPW/WRF/CLF/RDF) on stderr.
