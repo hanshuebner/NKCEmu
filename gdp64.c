@@ -850,6 +850,10 @@ int gdp64_set_vsync(BYTE vs)
 BYTE key_p68_in()
 {
     SDL_Event event;
+    /* The NKC keyboard powers up in CAPS-LOCK mode (letters upper case, Shift
+     * gives lower case); the Caps Lock key inverts this.  Non-letters and the
+     * injected (-k) stream are unaffected. */
+    static int caps_lock = 1;
 
     /* keyboard injection (-K): present the current scripted byte until the
      * strobe is cleared by reading port 69 (key_p69_in advances). */
@@ -870,13 +874,30 @@ BYTE key_p68_in()
                 break;
 
             case SDL_TEXTINPUT:
-                /* take the first byte; NKC BASIC is 7-bit ASCII */
-                keyReg68 = (BYTE)event.text.text[0];
+            {
+                /* NKC BASIC is 7-bit ASCII.  Apply our own caps-lock logic to
+                 * letters: upper = caps_lock XOR shift.  Leave everything else
+                 * (digits, symbols) exactly as the host produced it. */
+                unsigned char c = (unsigned char)event.text.text[0];
+                if ((c>='A'&&c<='Z') || (c>='a'&&c<='z'))
+                {
+                    int shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+                    int upper = caps_lock ^ shift;
+                    c = (c & 0xDF) | (upper ? 0x00 : 0x20); /* bit5: 0=UC 1=lc */
+                }
+                keyReg68 = c;
                 break;
+            }
 
             case SDL_KEYDOWN:
             {
                 SDL_Keycode sym = event.key.keysym.sym;
+                /* Caps Lock toggles our internal caps mode (not a character) */
+                if (sym==SDLK_CAPSLOCK)
+                {
+                    caps_lock = !caps_lock;
+                    break;
+                }
                 /* emulator hot-keys first */
                 if (sym==SDLK_F1)
                 {
