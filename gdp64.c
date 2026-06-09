@@ -865,10 +865,6 @@ int gdp64_set_vsync(BYTE vs)
 BYTE key_p68_in()
 {
     SDL_Event event;
-    /* The NKC keyboard powers up in CAPS-LOCK mode (letters upper case, Shift
-     * gives lower case); the Caps Lock key inverts this.  Non-letters and the
-     * injected (-k) stream are unaffected. */
-    static int caps_lock = 1;
 
     /* keyboard injection (-K): present the current scripted byte, then a short
      * "released" gap (no key) after each one, so the guest's between-line and
@@ -893,14 +889,19 @@ BYTE key_p68_in()
 
             case SDL_TEXTINPUT:
             {
-                /* NKC BASIC is 7-bit ASCII.  Apply our own caps-lock logic to
-                 * letters: upper = caps_lock XOR shift.  Leave everything else
-                 * (digits, symbols) exactly as the host produced it. */
+                /* NKC BASIC is 7-bit ASCII.  The NKC keyboard powers up in
+                 * caps-lock mode, so letters are upper case by default and
+                 * Shift gives lower case.  The host Caps Lock key inverts this:
+                 * we read its live state (KMOD_CAPS) rather than tracking a
+                 * key-press edge, which is unreliable on macOS.  Non-letters
+                 * are left exactly as the host produced them. */
                 unsigned char c = (unsigned char)event.text.text[0];
                 if ((c>='A'&&c<='Z') || (c>='a'&&c<='z'))
                 {
-                    int shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
-                    int upper = caps_lock ^ shift;
+                    SDL_Keymod m = SDL_GetModState();
+                    int shift = (m & KMOD_SHIFT) != 0;
+                    int caps  = (m & KMOD_CAPS)  == 0;   /* host caps off = our caps on */
+                    int upper = caps ^ shift;
                     c = (c & 0xDF) | (upper ? 0x00 : 0x20); /* bit5: 0=UC 1=lc */
                 }
                 keyReg68 = c;
@@ -910,12 +911,6 @@ BYTE key_p68_in()
             case SDL_KEYDOWN:
             {
                 SDL_Keycode sym = event.key.keysym.sym;
-                /* Caps Lock toggles our internal caps mode (not a character) */
-                if (sym==SDLK_CAPSLOCK)
-                {
-                    caps_lock = !caps_lock;
-                    break;
-                }
                 /* emulator hot-keys first */
                 if (sym==SDLK_F1)
                 {
