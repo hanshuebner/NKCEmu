@@ -920,25 +920,9 @@ BYTE key_p68_in()
                 break;
 
             case SDL_TEXTINPUT:
-            {
-                /* NKC BASIC is 7-bit ASCII.  The NKC keyboard powers up in
-                 * caps-lock mode, so letters are upper case by default and
-                 * Shift gives lower case.  The host Caps Lock key inverts this:
-                 * we read its live state (KMOD_CAPS) rather than tracking a
-                 * key-press edge, which is unreliable on macOS.  Non-letters
-                 * are left exactly as the host produced them. */
-                unsigned char c = (unsigned char)event.text.text[0];
-                if ((c>='A'&&c<='Z') || (c>='a'&&c<='z'))
-                {
-                    SDL_Keymod m = SDL_GetModState();
-                    int shift = (m & KMOD_SHIFT) != 0;
-                    int caps  = (m & KMOD_CAPS)  == 0;   /* host caps off = our caps on */
-                    int upper = caps ^ shift;
-                    c = (c & 0xDF) | (upper ? 0x00 : 0x20); /* bit5: 0=UC 1=lc */
-                }
-                keyReg68 = c;
+                /* take the byte the host produced (its own Shift/Caps Lock) */
+                keyReg68 = (BYTE)event.text.text[0];
                 break;
-            }
 
             case SDL_KEYDOWN:
             {
