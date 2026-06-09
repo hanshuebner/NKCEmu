@@ -97,7 +97,7 @@ void mon(void)
 		fflush(stdout);
 		if (fgets(cmd, LENCMD, stdin) == NULL) {
 			putchar('\n');
-			goto next;
+			break;          /* EOF (Ctrl-D) -> leave the monitor */
 		}
 		switch (*cmd) {
 		case '\n':

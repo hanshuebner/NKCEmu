@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/select.h>
 #include <stdbool.h>
 #include "sim.h"
 #include "simglb.h"
@@ -818,6 +819,37 @@ int gdp64_set_vsync(BYTE vs)
      * stick -- would leave the window unmapped/unresponsive.  SDL_PumpEvents
      * does not consume events, so key_p68_in's SDL_PollEvent still sees them. */
     SDL_PumpEvents();
+
+    /* Closing the window quits the emulator even if the guest never reads the
+     * keyboard.  Peep only the QUIT event so key_p68_in still sees keystrokes. */
+    {
+        SDL_Event qev;
+        if (SDL_PeepEvents(&qev,1,SDL_GETEVENT,SDL_QUIT,SDL_QUIT) > 0)
+        {
+            exit_io();
+            exit(0);
+        }
+    }
+
+    /* Ctrl-D (EOF) on the controlling terminal also quits cleanly.  Only when
+     * stdin is an interactive tty -- piped/headless stdin is EOF from the start
+     * (and is the z80pack monitor's command channel), so leave it alone. */
+    {
+        static int stdin_tty = -1;
+        if (stdin_tty < 0) stdin_tty = isatty(0);
+        if (stdin_tty)
+        {
+            fd_set rfds;
+            struct timeval tv = {0,0};
+            FD_ZERO(&rfds);
+            FD_SET(0,&rfds);
+            if (select(1,&rfds,NULL,NULL,&tv) > 0)
+            {
+                char ch;
+                if (read(0,&ch,1) == 0) { exit_io(); exit(0); } /* EOF = Ctrl-D */
+            }
+        }
+    }
 
     /* time the keyboard-injection release gap on the vsync tick (real-time,
      * ~50 Hz), independent of how often the guest polls the keyboard. */
