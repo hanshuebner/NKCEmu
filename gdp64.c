@@ -974,7 +974,12 @@ BYTE key_p68_in()
             }
 
             case SDL_KEYUP:
-                keyReg68=0x80;
+                /* Do NOT clear keyReg68 here.  The real NKC keyboard latches the
+                 * key in port 68 until the strobe (port 69) is read; it is not
+                 * cleared on release.  Clearing on KEYUP caused a test-then-get
+                 * race: KBDTST (port 68) saw the char, then KBDGET's re-read of
+                 * port 68 polled this KEYUP and lost it, so KBDGET span forever
+                 * (LIST/ESCAPE poll "hangs until a key is pressed"). */
                 break;
 
             default:
