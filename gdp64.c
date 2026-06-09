@@ -819,6 +819,10 @@ int gdp64_set_vsync(BYTE vs)
      * does not consume events, so key_p68_in's SDL_PollEvent still sees them. */
     SDL_PumpEvents();
 
+    /* time the keyboard-injection release gap on the vsync tick (real-time,
+     * ~50 Hz), independent of how often the guest polls the keyboard. */
+    if (vs!=0 && injgap > 0) injgap--;
+
     if (vs!=0)
     {
         status=(status | 2);
@@ -870,7 +874,7 @@ BYTE key_p68_in()
      * "released" gap (no key) after each one, so the guest's between-line and
      * ESCAPE polls don't swallow scripted characters. */
     if (injbuf && injpos < injlen) {
-        if (injgap > 0) { injgap--; return 0x80; }
+        if (injgap > 0) return 0x80;    /* "key up" gap (timed by vsync) */
         return injbuf[injpos] & 0x7F;   /* bit7 clear = char present */
     }
 
@@ -975,7 +979,7 @@ BYTE key_p69_in()
      * current scripted byte and advances to the next, with a release gap. */
     if (injbuf && injpos < injlen) {
         injpos++;
-        injgap = 20000;             /* "key up" window before the next char */
+        injgap = 2;                 /* "key up" window (vsync ticks) */
     }
     keyReg68=0x80;
     return keyReg69;
