@@ -822,11 +822,20 @@ int gdp64_set_vsync(BYTE vs)
     if (vs!=0)
     {
         status=(status | 2);
-        /* now show actual read page if something has changed */
+        /* composite all four pages (OR) so independent planes -- e.g. text on
+         * page 0 and graphics on page 1 -- are shown overlaid.  Empty pixels
+         * are black (rgb 0), so ORing is the union of the lit pixels. */
         if (contentChanged==1)
         {
-            SDL_Surface *p=pages[actualReadPage];
-            SDL_UpdateTexture(texture,NULL,p->pixels,p->pitch);
+            static Uint32 comp[512*256];
+            Uint32 *p0=(Uint32*)pages[0]->pixels;
+            Uint32 *p1=(Uint32*)pages[1]->pixels;
+            Uint32 *p2=(Uint32*)pages[2]->pixels;
+            Uint32 *p3=(Uint32*)pages[3]->pixels;
+            int i;
+            for (i=0; i<512*256; i++)
+                comp[i] = p0[i] | p1[i] | p2[i] | p3[i];
+            SDL_UpdateTexture(texture,NULL,comp,512*4);
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer,texture,NULL,NULL);
             SDL_RenderPresent(renderer);

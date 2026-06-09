@@ -135,132 +135,60 @@ static void load_core(void)
 
 int main(int argc, char *argv[])
 {
-    register char *s, *p;
-    register char *pn = argv[0];
+    int opt;
+    char *pn = argv[0];
+    int a_offset = 0;       /* -a: start-address offset (applied after PC set) */
     CAS_FILE=0;
-    bool windowed=true;     /* default to windowed; -f forces fullscreen */
-    
-    while (--argc > 0 && (*++argv)[0] == '-')
+    bool windowed=true;     /* default to windowed; -F forces fullscreen */
+
+    while ((opt = getopt(argc, argv, "slhiwFm:f:x:b:c:a:u:k:")) != -1)
     {
-        for (s = argv[0] + 1; *s != '\0'; s++)
+        switch (opt)
         {
-            switch (*s)
-            {
-                case 's':   /* save core and CPU on exit */
-                    s_flag = 1;
-                    break;
-                case 'l':   /* load core and CPU from file */
-                    l_flag = 1;
-                    break;
-                case 'h':   /* execute HALT opcode */
-                    break_flag = 0;
-                    break;
-                case 'i':   /* trap I/O on unused ports */
-                    i_flag = 1;
-                    break;
-                case 'm':   /* initialize Z80 memory */
-                    m_flag = exatoi(s+1);
-                    s += strlen(s+1);
-                    break;
-                case 'f':
-                    f_flag = atoi(s+1);
-                    s += strlen(s+1);
-                    tmax = f_flag * 10000;
-                    break;
-                case 'x':   /* get filename with Z80 executable */
-                    x_flag = 1;
-                    s++;
-                    p = xfn;
-                    while (*s)
-                        *p++ = *s++;
-                    *p = '\0';
-                    s--;
-                    break;
-                case 'b':   /* get filename with Z80 EEPROM content */
-                    b_flag = 1;
-                    s++;
-                    p = xfn;
-                    while (*s)
-                        *p++ = *s++;
-                    *p = '\0';
-                    s--;
-                    break;
-		case 'c':
-		{
-		    s++;
-		    char buf[strlen(s)];
-                    p = buf;
-                    while (*s)
-                        *p++ = *s++;
-                    *p = '\0';
-                    s--;
-		    if ((CAS_FILE = open(buf, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) == -1)
-		    {
-			puts("can't open CAS file");
-			return 1;
-		    }
-		    break;
-		}
-		case 'u':           /* directory used as the emulated USB stick */
-		{
-		    static char usbdir[1024];
-		    s++;
-		    p = usbdir;
-		    while (*s && (size_t)(p - usbdir) < sizeof(usbdir) - 1)
-			*p++ = *s++;
-		    *p = '\0';
-		    s--;
-		    vdip_set_dir(usbdir);
-		    break;
-		}
-		case 'k':           /* inject keystrokes from a file (testing) */
-		{
-		    static char keyfn[1024];
-		    s++;
-		    p = keyfn;
-		    while (*s && (size_t)(p - keyfn) < sizeof(keyfn) - 1)
-			*p++ = *s++;
-		    *p = '\0';
-		    s--;
-		    key_inject_file(keyfn);
-		    break;
-		}
-		case 'w':           /* windowed (now the default; kept for compat) */
-		{
-		    windowed=true;
-		    break;
-		}
-		case 'F':           /* force fullscreen */
-		{
-		    windowed=false;
-		    break;
-		}
-		case 'a':
-		{
-		  PC=PC+exatoi(s+1);
-		  s += strlen(s+1);
-		  break;
-		}
-                case '?':
-                    goto usage;
-                default:
-                    printf("illegal option %c\n", *s);
-    usage:          printf("usage:\t%s -s -l -i -h -mn -fn -xfilename\n", pn);
-                    puts("\ts = save core and cpu");
-                    puts("\tl = load core and cpu");
-                    puts("\ti = trap on I/O to unused ports");
-                    puts("\th = execute HALT op-code");
-                    puts("\tm = init memory with n");
-                    puts("\tf = CPU frequenzy n in MHz");
-                    puts("\tx = load and execute filename");
-                    puts("\tb = load EPROM content starting at 0x0000");
-		    puts("\tc = filename for CAS emulation");
-		    puts("\tu = directory used as the USB stick (default: .)");
-		    puts("\tw = start in windowed mode (default)");
-		    puts("\tF = start in fullscreen mode");
-		    puts("\ta = start address");
-                    exit(1);
-            }
+            case 's': s_flag = 1; break;            /* save core+CPU on exit */
+            case 'l': l_flag = 1; break;            /* load core+CPU at start */
+            case 'h': break_flag = 0; break;        /* execute HALT opcode */
+            case 'i': i_flag = 1; break;            /* trap I/O on unused ports */
+            case 'w': windowed = true; break;       /* windowed (the default) */
+            case 'F': windowed = false; break;      /* fullscreen */
+            case 'm': m_flag = exatoi(optarg); break;          /* init memory */
+            case 'f': f_flag = atoi(optarg);                   /* CPU MHz */
+                      tmax = f_flag * 10000; break;
+            case 'x': x_flag = 1;                              /* load+execute */
+                      strncpy(xfn, optarg, LENCMD-1); xfn[LENCMD-1] = '\0';
+                      break;
+            case 'b': b_flag = 1;                              /* EPROM @ $0000 */
+                      strncpy(xfn, optarg, LENCMD-1); xfn[LENCMD-1] = '\0';
+                      break;
+            case 'a': a_offset = exatoi(optarg); break;        /* start address */
+            case 'u': vdip_set_dir(optarg); break;             /* USB directory */
+            case 'k': key_inject_file(optarg); break;          /* inject keys */
+            case 'c':                                          /* CAS file */
+                if ((CAS_FILE = open(optarg, O_RDWR | O_CREAT,
+                                     S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) == -1)
+                {
+                    puts("can't open CAS file");
+                    return 1;
+                }
+                break;
+            default:    /* '?' : unknown option or missing argument */
+                fprintf(stderr, "usage: %s [-s] [-l] [-i] [-h] [-w] [-F] "
+                        "[-m hex] [-f MHz] [-x file] [-b file] [-c file] "
+                        "[-a hex] [-u dir] [-k file]\n", pn);
+                fputs("\ts = save core and cpu on exit\n"
+                      "\tl = load core and cpu at start\n"
+                      "\ti = trap on I/O to unused ports\n"
+                      "\th = execute HALT op-code\n"
+                      "\tw = windowed (default)    F = fullscreen\n"
+                      "\tm = init memory with hex value\n"
+                      "\tf = CPU frequency in MHz\n"
+                      "\tx = load and execute file\n"
+                      "\tb = load EPROM image at $0000\n"
+                      "\tc = file for CAS emulation\n"
+                      "\ta = start-address offset (hex)\n"
+                      "\tu = directory used as the USB stick (default: .)\n"
+                      "\tk = inject keystrokes from a file\n", stderr);
+                return 1;
         }
     }
     putchar('\n');
@@ -272,6 +200,7 @@ int main(int argc, char *argv[])
     fflush(stdout);
 
     wrk_ram = PC = STACK = ram;
+    PC += a_offset;                     /* -a start-address offset */
     memset((char *) ram, m_flag, 32768);
     memset((char *) ram + 32768, m_flag, 32768);
     if (l_flag)
