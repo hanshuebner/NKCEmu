@@ -213,7 +213,7 @@ void DrawChar(unsigned char c)
                         for ( y1=0; y1<yMag; y1++)
                         {
                             if (ctrl2&8)
-                                DrawPixel(pages[actualWritePage],realX-y*yMag-y1,realY-x*xMag-x1,pen.r,pen.g,pen.b);
+                                DrawPixel(pages[actualWritePage],realX+y*yMag+y1,realY+x*xMag+x1,pen.r,pen.g,pen.b);
                             else
                                 DrawPixel(pages[actualWritePage],realX+x*xMag+x1,realY-y*yMag-y1,pen.r,pen.g,pen.b);
                         }
@@ -956,6 +956,13 @@ BYTE key_p68_in()
                 if (sym==SDLK_F2 && CAS_FILE!=0)
                 {
                     lseek(CAS_FILE, 0, SEEK_SET);
+                    break;
+                }
+                /* Ctrl+letter -> control code 1..26 (e.g. Ctrl-U = 0x15 clears
+                 * the input line); no SDL_TEXTINPUT fires while Ctrl is held */
+                if ((event.key.keysym.mod & KMOD_CTRL) && sym>='a' && sym<='z')
+                {
+                    keyReg68 = (BYTE)(sym - 'a' + 1);
                     break;
                 }
                 /* control keys that produce no SDL_TEXTINPUT */
