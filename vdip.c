@@ -31,7 +31,10 @@
  *      0x04 RDF <sp>name<cr>   stream the whole file back as read data
  *      0x10           <cr>     mode/echo handshake used during reset
  *  Every command except RDF answers with a ">" prompt; RDF just delivers the
- *  file bytes and then reports "no data" (EOF) on the next read.
+ *  file bytes and then reports "no data" (EOF) on the next read.  (Real VNC1L
+ *  hardware re-prompts after RDF too; the firmware copes by trimming a trailing
+ *  ">\r" off file reads -- see VDLOAD / the monitor C command -- so it does not
+ *  matter that the emulator omits it here.)
  ***************************************************************************/
 
 #include <stdio.h>
@@ -382,7 +385,7 @@ static void vdap_write(unsigned char b)
             case 0x01: cmd_dir(arg);        break;          /* no prompt */
             case 0x09: cmd_open_write(arg); break;
             case 0x0A: cmd_close(arg);      break;
-            case 0x04: cmd_read_stream(arg);break;          /* no prompt */
+            case 0x04: cmd_read_stream(arg);break;
             case 0x06: cmd_rename(arg);     break;
             case 0x07: cmd_delete(arg);     break;
             case 0x11: cmd_fopen(arg);      break;
