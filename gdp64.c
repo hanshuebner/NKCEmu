@@ -34,9 +34,16 @@
 #include "simglb.h"
 #include "ef9366charset.h"
 #include "nkcglobal.h"
+#include <signal.h>
 
 extern void resetVsyncTimer();
 extern void exit_io(void);
+
+/* Screenshot: SIGUSR1 dumps the composited screen to a PPM (env NKCEMU_SHOT,
+ * default /tmp/nkcshot.ppm).  The flag is serviced from the vsync tick, not the
+ * signal handler, so no SDL/heap calls run in async-signal context. */
+static volatile sig_atomic_t want_shot = 0;
+static void shot_sig(int s) { (void)s; want_shot = 1; }
 
 /* SDL2 needs an explicit pixel format shared by the offscreen pages and the
  * streaming texture, so SDL_UpdateTexture is a straight byte copy. */
@@ -816,8 +823,26 @@ void gdp64_p7B_out(BYTE b)
     penY=((int)b) | (penY & 0xFF00);
 }
 
+static void gdp64_screenshot(void)
+{
+    const char *path = getenv("NKCEMU_SHOT");
+    if (!path || !*path) path = "/tmp/nkcshot.ppm";
+    FILE *f = fopen(path, "wb");
+    if (!f) return;
+    Uint32 *pv = (Uint32 *)pages[actualReadPage]->pixels;   /* view page  */
+    Uint32 *pg = (Uint32 *)pages[2]->pixels;                /* graphics   */
+    fprintf(f, "P6\n512 256\n255\n");
+    for (int i = 0; i < 512 * 256; i++) {
+        Uint32 p = pv[i] | pg[i];                           /* ARGB8888   */
+        unsigned char rgb[3] = { (p >> 16) & 0xFF, (p >> 8) & 0xFF, p & 0xFF };
+        fwrite(rgb, 1, 3, f);
+    }
+    fclose(f);
+}
+
 int gdp64_set_vsync(BYTE vs)
 {
+    if (want_shot) { want_shot = 0; gdp64_screenshot(); }
     /* Pump the windowing system from the CPU loop (this runs every ~20ms),
      * not only when the program reads the keyboard.  Otherwise a program that
      * never polls the keyboard -- e.g. the boot loader spinning on the USB
@@ -1033,6 +1058,7 @@ void key_p69_out(BYTE b)
 void initGDP64(bool windowed)
 {
     int i;
+    signal(SIGUSR1, shot_sig);          /* SIGUSR1 -> dump a screenshot */
     /* Initialize Graphics Window */
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
