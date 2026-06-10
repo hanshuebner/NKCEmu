@@ -451,7 +451,15 @@ static void vdip_hw_reset(void)
     for (int i = 1; i <= NCHAN; i++) if (chan[i]) { fclose(chan[i]); chan[i] = NULL; }
     vstate = ST_CMD;
     rx_reset();
-    rx_prompt();                    /* power-on banner the monitor waits for */
+    /* Power-on banner, matching the real VNC1L (firmware 0.3.68): a few verbose
+     * lines ending in the "D:>" disk-ready prompt.  vnc_reset drains this until
+     * the '>' and then sends "SCS\r" to enter the short command set.  (We model
+     * the chip as always understanding the short binary commands, so the ASCII
+     * "SCS\r" just reads as unknown bytes here -- harmless re-prompts.) */
+    rx_push_str("Ver 0.3.68.DEPF On-Line:\r"
+                "Device Detected P2\r"
+                "No Upgrade\r"
+                "D:>\r");
     in_xfer = 0; bitcnt = 0;
 }
 
