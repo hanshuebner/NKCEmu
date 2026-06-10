@@ -525,7 +525,9 @@ BYTE gdp64_p70_in()
      * bit 6: ready sigbal IRQ
      * bit 7: ORed bits 4-7
     */
-    // TODO: implement timers for 20ms vsync signal!
+    /* bit 1 (vertical sync) is driven from gdp64_set_vsync(), which the CPU loop
+     * calls in real wall-clock time (~50 Hz) -- so the guest can use the retrace
+     * as a real-time tick (e.g. the cursor blink) with no hardware timer card. */
     return status;
 }
 
@@ -842,6 +844,10 @@ static void gdp64_screenshot(void)
 
 int gdp64_set_vsync(BYTE vs)
 {
+    /* drive the EF9366 vertical-sync status bit (port 0x70 bit 1).  vs alternates
+     * 1/0 in real time (~50 Hz), giving the guest a hardware-timer-free tick. */
+    if (vs) status |= 0x02; else status &= ~0x02;
+
     if (want_shot) { want_shot = 0; gdp64_screenshot(); }
     /* Pump the windowing system from the CPU loop (this runs every ~20ms),
      * not only when the program reads the keyboard.  Otherwise a program that
