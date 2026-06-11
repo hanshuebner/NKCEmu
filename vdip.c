@@ -238,7 +238,12 @@ static void cmd_read_stream(const char *name)
     int c, n = 0;
     while ((c = fgetc(f)) != EOF) { rx_push((unsigned char)c); n++; }
     fclose(f);
-    DBG("VDIP: RDF '%s' -> %d bytes\n", name, n);
+    /* The real VNC1L re-prompts after the data.  Send it here too, so the
+     * firmware's prompt-stripping paths (VDLOAD's trim and exactly-full
+     * buffer, *EXEC's 2-byte lookahead, the monitor's CRC) are exercised in
+     * the emulator instead of only on real hardware. */
+    rx_prompt();
+    DBG("VDIP: RDF '%s' -> %d bytes (+prompt)\n", name, n);
 }
 
 static void cmd_delete(const char *name)
