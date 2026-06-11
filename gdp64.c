@@ -1005,15 +1005,16 @@ BYTE key_p68_in()
                     case SDLK_DELETE:      keyReg68=0x7F; break;
                     case SDLK_TAB:         keyReg68=0x09; break;
                     case SDLK_ESCAPE:      keyReg68=0x1B; break;
-                    /* BBC copy-cursor editing: arrows move the copy cursor,
-                     * End is the COPY key. */
-                    case SDLK_LEFT:        keyReg68=0x1C; break;
+                    /* Copy-cursor editing: arrows move the copy cursor, COPY
+                     * copies the char under it.  Codes match the real NKC
+                     * keyboard (up=5 down=24 left=19 right=4 copy=6). */
+                    case SDLK_LEFT:        keyReg68=0x13; break;
                     /* Shift+Right doubles as COPY (macOS keyboards have no End) */
                     case SDLK_RIGHT:       keyReg68=(event.key.keysym.mod & KMOD_SHIFT)
-                                                    ? 0x05 : 0x1D; break;
-                    case SDLK_DOWN:        keyReg68=0x1E; break;
-                    case SDLK_UP:          keyReg68=0x1F; break;
-                    case SDLK_END:         keyReg68=0x05; break;
+                                                    ? 0x06 : 0x04; break;
+                    case SDLK_DOWN:        keyReg68=0x18; break;
+                    case SDLK_UP:          keyReg68=0x05; break;
+                    case SDLK_END:         keyReg68=0x06; break;
                     default:               /* printable -> handled by TEXTINPUT */
                         break;
                 }
