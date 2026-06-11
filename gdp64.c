@@ -503,8 +503,12 @@ BYTE gdp64_p60_in()
 
 void gdp64_p60_out(BYTE b)
 {
-    actualReadPage=(b & 0x30) >> 4;
-    actualWritePage=(b & 0xC0) >> 6;
+    /* REAL GDP64 layout (confirmed on hardware -- and the firmware is now
+     * written against it): bits 6-7 = displayed page, bits 4-5 = write page.
+     * This was modelled backwards for years; the symmetric values most code
+     * writes (view==write) masked it. */
+    actualReadPage=(b & 0xC0) >> 6;
+    actualWritePage=(b & 0x30) >> 4;
     if (seite!=b)
     {
         contentChanged=1;
