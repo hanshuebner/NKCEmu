@@ -33,8 +33,7 @@
  *  Every command except RDF answers with a ">" prompt; RDF just delivers the
  *  file bytes and then reports "no data" (EOF) on the next read.  (Real VNC1L
  *  hardware re-prompts after RDF too; the firmware copes by trimming a trailing
- *  ">\r" off file reads -- see VDLOAD / the monitor C command -- so it does not
- *  matter that the emulator omits it here.)
+ *  ">\r" off file reads -- see VDLOAD / the monitor C command.)
  ***************************************************************************/
 
 #include <stdio.h>
@@ -116,28 +115,42 @@ static int rx_pop(void)             /* -1 if empty */
 }
 static void rx_push_str(const char *s) { while (*s) rx_push((unsigned char)*s++); }
 
-/* The monitor's vnc_waitres scans the reply until it sees '>' (success).
- * A ">" followed by a CR satisfies both that scan and the extra byte it
- * reads afterwards. */
-static void rx_prompt(void) { rx_push_str(">\r"); }
+/* Prompts and error responses are mode-dependent, like the real chip:
+ * verbose extended forms after reset ("D:\>", "Bad Command"), terse short
+ * forms once SCS is selected (">", "BC"). */
+static int scs_mode = 0;            /* 0 = extended (power-on default) */
+
+static void rx_prompt(void)
+{
+    rx_push_str(scs_mode ? ">\r" : "D:\\>\r");
+}
+
+static void rx_err(const char *code2, const char *verbose)
+{
+    rx_push_str(scs_mode ? code2 : verbose);
+    rx_push('\r');
+}
 
 /* ===================================================================== *
  *  VDAP command parser (consumes bytes written to the data register)    *
+ *  Faithful to the Vinculum Firmware User Manual: extended vs short     *
+ *  command sets, ONE open file, binary dword parameters MSB first,      *
+ *  DIR <file> size replies LSB first, write-truncation semantics.       *
  * ===================================================================== */
-enum { ST_CMD, ST_ARG, ST_WRF_HDR, ST_WRF_DATA, ST_FIXED };
+enum { ST_CMD, ST_NAMEARG, ST_TEXT, ST_BINPAR, ST_WRF_DATA };
 static int  vstate = ST_CMD;
 static int  vcmd = 0;
 static char arg[64];
 static int  arglen = 0;
-static int  hdrcnt = 0;
-static unsigned long wrf_len = 0, wrf_rem = 0;
-static FILE *wfile = NULL;          /* file currently open for writing */
+static int  parcnt = 0;             /* binary-parameter parse position */
+static unsigned long parval = 0;    /* the 32-bit MSB-first parameter  */
+static unsigned long wrf_rem = 0;
+static int  wrf_ok = 0;
 
-/* --- BBC data-file channels (OPENIN/OPENOUT/OPENUP -> BGET#/BPUT#/PTR# ...) --- */
-#define NCHAN 4
-static FILE *chan[NCHAN + 1];       /* chan[1..NCHAN]; 0 unused (= "no channel") */
-static unsigned char fbuf[8];       /* fixed-length command bytes */
-static int  fixneed = 0, fixgot = 0;
+/* --- THE open file: the real VNC1L has exactly one --- */
+static FILE *ofile = NULL;
+static char oname[64];
+static int  omode = 0;              /* 0 none, 1 read (OPR), 2 write (OPW) */
 
 /* basename of a (possibly space-padded) VDAP name, with path separators dropped */
 static const char *vdip_basename(const char *name)
@@ -168,22 +181,11 @@ static void make_read_path(char *out, size_t n, const char *name)
     snprintf(out, n, "%s/%s", vdip_dir(), base);
 }
 
-static void cmd_open_write(const char *name)
+static long file_size(FILE *f)
 {
-    char path[512];
-    make_path(path, sizeof path, name);
-    mkdir(vdip_dir(), 0777);
-    if (wfile) fclose(wfile);
-    wfile = fopen(path, "wb");
-    DBG("VDIP: OPW '%s' -> %s\n", name, wfile ? "ok" : "FAIL");
-    rx_prompt();
-}
-
-static void cmd_close(const char *name)
-{
-    DBG("VDIP: CLF '%s'\n", name);
-    if (wfile) { fclose(wfile); wfile = NULL; }
-    rx_prompt();
+    long cur = ftell(f), sz;
+    fseek(f, 0, SEEK_END); sz = ftell(f); fseek(f, cur, SEEK_SET);
+    return sz;
 }
 
 static int dir_cmp(const void *a, const void *b)
@@ -191,15 +193,10 @@ static int dir_cmp(const void *a, const void *b)
     return strcasecmp(*(const char *const *)a, *(const char *const *)b);
 }
 
-/* DIR: sends a leading throwaway byte, then the matching names sorted and each
- * CR-terminated.  An optional shell-style pattern (e.g. "*.BAS") filters the
- * listing; empty pattern lists everything. */
-static void cmd_dir(const char *pattern)
+/* DIR (no argument): blank line, the names sorted and CR-terminated, prompt. */
+static void cmd_dir(void)
 {
-    while (*pattern == ' ') pattern++;
-    const char *pat = (*pattern && *pattern != 0x0D) ? pattern : "*";
-
-    rx_push('\r');                  /* leading byte the monitor discards */
+    rx_push('\r');                  /* the leading blank line */
 
     static char *names[2048];
     const int cap = (int)(sizeof names / sizeof names[0]);
@@ -211,7 +208,6 @@ static void cmd_dir(const char *pattern)
         struct dirent *e;
         while ((e = readdir(d)) && n < cap) {
             if (e->d_name[0] == '.') continue;          /* skip . .. dotfiles */
-            if (fnmatch(pat, e->d_name, FNM_CASEFOLD) != 0) continue;
             int dup = 0;
             for (int k = 0; k < n; k++)
                 if (strcasecmp(names[k], e->d_name) == 0) { dup = 1; break; }
@@ -225,132 +221,179 @@ static void cmd_dir(const char *pattern)
         rx_push('\r');
         free(names[i]);
     }
-    DBG("VDIP: DIR pat='%s' -> %d entries\n", pat, n);
+    DBG("VDIP: DIR -> %d entries\n", n);
+    rx_prompt();
 }
 
-static void cmd_read_stream(const char *name)
+/* DIR <name>: blank line, "NAME <size>" (4 binary bytes, LSB first), CR,
+ * prompt.  This is how the firmware learns a file's exact length. */
+static void cmd_dirfile(const char *name)
 {
+    char path[512]; struct stat st;
+    make_read_path(path, sizeof path, name);
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        DBG("VDIP: DIR '%s' -> CF\n", name);
+        rx_err("CF", "Command Failed");
+        return;
+    }
+    unsigned long v = (unsigned long)st.st_size;
+    rx_push('\r');
+    rx_push_str(vdip_basename(name));
+    rx_push(' ');
+    rx_push(v & 0xFF); rx_push((v >> 8) & 0xFF);
+    rx_push((v >> 16) & 0xFF); rx_push((v >> 24) & 0xFF);
+    rx_push('\r');
+    rx_prompt();
+    DBG("VDIP: DIR '%s' -> %lu bytes\n", name, v);
+}
+
+static void cmd_opr(const char *name)
+{
+    if (omode == 2) { rx_err("FO", "File Open"); return; }
+    if (ofile) { fclose(ofile); ofile = NULL; omode = 0; }  /* replace a read */
+    char path[512];
+    make_read_path(path, sizeof path, name);
+    ofile = fopen(path, "rb");
+    if (!ofile) { DBG("VDIP: OPR '%s' -> CF\n", name); rx_err("CF", "Command Failed"); return; }
+    omode = 1;
+    snprintf(oname, sizeof oname, "%s", vdip_basename(name));
+    DBG("VDIP: OPR '%s' (%ld bytes)\n", oname, file_size(ofile));
+    rx_prompt();
+}
+
+static void cmd_opw(const char *name)
+{
+    if (omode == 2) { rx_err("FO", "File Open"); return; }
+    if (ofile) { fclose(ofile); ofile = NULL; omode = 0; }
+    char path[512]; struct stat st;
+    make_read_path(path, sizeof path, name);
+    if (stat(path, &st) != 0) { make_path(path, sizeof path, name); mkdir(vdip_dir(), 0777); }
+    ofile = fopen(path, "r+b");
+    if (!ofile) ofile = fopen(path, "w+b");
+    if (!ofile) { rx_err("CF", "Command Failed"); return; }
+    fseek(ofile, 0, SEEK_END);                  /* OPW appends to existing data */
+    omode = 2;
+    snprintf(oname, sizeof oname, "%s", vdip_basename(name));
+    DBG("VDIP: OPW '%s' (pos %ld)\n", oname, ftell(ofile));
+    rx_prompt();
+}
+
+static void cmd_clf(const char *name)
+{
+    if (!ofile || strcasecmp(vdip_basename(name), oname) != 0) {
+        DBG("VDIP: CLF '%s' -> CF (open: '%s')\n", name, ofile ? oname : "-");
+        rx_err("CF", "Command Failed");
+        return;
+    }
+    if (omode == 2) {               /* write files truncate at the pointer */
+        fflush(ofile);
+        ftruncate(fileno(ofile), ftell(ofile));
+    }
+    fclose(ofile); ofile = NULL; omode = 0;
+    DBG("VDIP: CLF '%s'\n", name);
+    rx_prompt();
+}
+
+static void cmd_rdf(unsigned long count)
+{
+    if (!ofile) { rx_err("FI", "Invalid"); return; }
+    long sz = file_size(ofile), pos = ftell(ofile);
+    if (pos >= sz) { DBG("VDIP: RDF %lu at EOF\n", count); rx_err("CF", "Command Failed"); return; }
+    unsigned long avail = (unsigned long)(sz - pos);
+    if (count > avail) count = avail;   /* short read at the end, no error */
+    DBG("VDIP: RDF %lu (pos %ld)\n", count, pos);
+    for (unsigned long i = 0; i < count; i++) {
+        int c = fgetc(ofile);
+        if (c == EOF) break;
+        rx_push((unsigned char)c);
+    }
+    rx_prompt();
+}
+
+static void cmd_sek(unsigned long pos)
+{
+    if (!ofile) { rx_err("FI", "Invalid"); return; }
+    if ((long)pos > file_size(ofile)) { rx_err("CF", "Command Failed"); return; }
+    fseek(ofile, (long)pos, SEEK_SET);
+    DBG("VDIP: SEK %lu\n", pos);
+    rx_prompt();
+}
+
+static void cmd_wrf_done(void)      /* runs after the data bytes arrived */
+{
+    if (!wrf_ok) { rx_err("FI", "Invalid"); return; }
+    fflush(ofile);
+    /* "The end of the file is moved to the position of the file pointer
+     * after a write operation" -- modelled literally, so the firmware's
+     * matching assumption is exercised here.  (To be verified on the real
+     * chip; relax both sides together if it turns out kinder.) */
+    ftruncate(fileno(ofile), ftell(ofile));
+    rx_prompt();
+}
+
+static void cmd_read_stream(const char *name)   /* RD: whole file + prompt */
+{
+    if (omode == 2) { rx_err("FO", "File Open"); return; }
     char path[512];
     make_read_path(path, sizeof path, name);
     FILE *f = fopen(path, "rb");
-    DBG("VDIP: RDF '%s' -> %s\n", name, f ? "ok" : "FAIL");
-    if (!f) { return; }             /* no data -> monitor sees EOF */
+    if (!f) { DBG("VDIP: RD '%s' -> CF\n", name); rx_err("CF", "Command Failed"); return; }
     int c, n = 0;
     while ((c = fgetc(f)) != EOF) { rx_push((unsigned char)c); n++; }
     fclose(f);
-    /* The real VNC1L re-prompts after the data.  Send it here too, so the
-     * firmware's prompt-stripping paths (VDLOAD's trim and exactly-full
-     * buffer, *EXEC's 2-byte lookahead, the monitor's CRC) are exercised in
-     * the emulator instead of only on real hardware. */
+    DBG("VDIP: RD '%s' -> %d bytes\n", name, n);
     rx_prompt();
-    DBG("VDIP: RDF '%s' -> %d bytes (+prompt)\n", name, n);
 }
 
 static void cmd_delete(const char *name)
 {
+    if (omode == 2) { rx_err("FO", "File Open"); return; }
     char path[512];
     make_read_path(path, sizeof path, name);   /* delete it wherever it lives */
     int r = unlink(path);
-    DBG("VDIP: DLF '%s' -> %s\n", name, r == 0 ? "ok" : "FAIL");
+    DBG("VDIP: DLF '%s' -> %s\n", name, r == 0 ? "ok" : "CF");
+    if (r != 0) { rx_err("CF", "Command Failed"); return; }
     rx_prompt();
 }
 
-static void cmd_rename(const char *arg)
+static void cmd_rename(const char *a)
 {
-    char buf[128];
-    strncpy(buf, arg, sizeof buf - 1);
-    buf[sizeof buf - 1] = 0;
-    char *old = buf;
-    while (*old == ' ') old++;
-    char *sp = strchr(old, ' ');
-    if (sp) {
-        *sp = 0;
-        char *nw = sp + 1;
-        char oldp[512], newp[512];
-        make_read_path(oldp, sizeof oldp, old);    /* find the source anywhere */
-        make_path(newp, sizeof newp, nw);          /* new name in primary dir  */
-        int r = rename(oldp, newp);
-        DBG("VDIP: REN '%s' -> '%s' %s\n", old, nw, r == 0 ? "ok" : "FAIL");
-    } else {
-        DBG("VDIP: REN bad args '%s'\n", arg);
-    }
+    if (omode == 2) { rx_err("FO", "File Open"); return; }
+    char oldn[256], newn[256], oldp[512], newp[512];
+    const char *sp = strchr(a, ' ');
+    if (!sp) { rx_err("BC", "Bad Command"); return; }
+    snprintf(oldn, sizeof oldn, "%.*s", (int)(sp - a), a);
+    while (*sp == ' ') sp++;
+    snprintf(newn, sizeof newn, "%s", sp);
+    make_read_path(oldp, sizeof oldp, oldn);
+    make_path(newp, sizeof newp, newn);
+    int r = rename(oldp, newp);
+    DBG("VDIP: REN '%s' -> '%s': %s\n", oldn, newn, r == 0 ? "ok" : "CF");
+    if (r != 0) { rx_err("CF", "Command Failed"); return; }
     rx_prompt();
 }
 
-/* FOPEN (0x11): arg = "<mode> <name>", mode R/W/U.  Replies with a channel
- * number byte (1..NCHAN, or 0 on failure) followed by the prompt. */
-static void cmd_fopen(const char *a)
+/* a full ASCII command line (the only form in extended mode; in short mode
+ * this is how "SCS"/"ECS"/"E"/"e" still work as text, per the datasheet) */
+static void text_dispatch(const char *line)
 {
-    char mode = *a ? *a : 'R';
-    const char *name = a + 1;
-    while (*name == ' ') name++;
-    const char *fmode = mode == 'W' ? "w+b" : mode == 'U' ? "r+b" : "rb";
-    int ch = 0;
-    for (int i = 1; i <= NCHAN; i++) if (!chan[i]) { ch = i; break; }
-    if (ch) {
-        char path[512];
-        if (mode == 'W') { make_path(path, sizeof path, name); mkdir(vdip_dir(), 0777); }
-        else             make_read_path(path, sizeof path, name);  /* R/U: any dir */
-        chan[ch] = fopen(path, fmode);
-        if (!chan[ch]) ch = 0;
+    DBG("VDIP: text '%s' (%s)\n", line, scs_mode ? "SCS" : "ECS");
+    if (!*line)                        { rx_prompt(); return; }  /* disk check */
+    if (strcasecmp(line, "SCS") == 0)  { scs_mode = 1; rx_prompt(); return; }
+    if (strcasecmp(line, "ECS") == 0)  { scs_mode = 0; rx_prompt(); return; }
+    if (strcmp(line, "E") == 0)        { rx_push_str("E\r"); return; }
+    if (strcmp(line, "e") == 0)        { rx_push_str("e\r"); return; }
+    if (strcasecmp(line, "IPA") == 0 ||
+        strcasecmp(line, "IPH") == 0)  { rx_prompt(); return; }
+    if (strcasecmp(line, "FWV") == 0)  { rx_push_str("\rMAIN 03.68VDAPF\rRPRG 1.00R\r");
+                                         rx_prompt(); return; }
+    if (strncasecmp(line, "DIR", 3) == 0 && (line[3] == 0 || line[3] == ' ')) {
+        const char *a = line + 3;
+        while (*a == ' ') a++;
+        if (*a) cmd_dirfile(a); else cmd_dir();
+        return;
     }
-    DBG("VDIP: FOPEN '%c' '%s' -> channel %d\n", mode, name, ch);
-    rx_push((unsigned char)ch);
-    rx_prompt();
-}
-
-static void push_u32(unsigned long v)   /* little-endian (LSB first) */
-{
-    rx_push(v & 0xFF); rx_push((v >> 8) & 0xFF);
-    rx_push((v >> 16) & 0xFF); rx_push((v >> 24) & 0xFF);
-}
-
-/* dispatch a fixed-length channel command once all its bytes are in fbuf[] */
-static void cmd_fixed(int cmd)
-{
-    int ch = fbuf[0];
-    FILE *f = (ch >= 1 && ch <= NCHAN) ? chan[ch] : NULL;
-    switch (cmd) {
-    case 0x12:                                  /* FCLOSE (0 = all) */
-        if (ch == 0) { for (int i = 1; i <= NCHAN; i++)
-                           if (chan[i]) { fclose(chan[i]); chan[i] = NULL; } }
-        else if (f)  { fclose(f); chan[ch] = NULL; }
-        rx_prompt();
-        break;
-    case 0x13: {                                /* FBGET -> status, data */
-        int c = f ? fgetc(f) : EOF;
-        if (c == EOF) { rx_push(1); rx_push(0); }
-        else          { rx_push(0); rx_push((unsigned char)c); }
-        rx_prompt();
-        break; }
-    case 0x14:                                  /* FBPUT channel,data */
-        if (f) fputc(fbuf[1], f);
-        rx_prompt();
-        break;
-    case 0x15:                                  /* FSEEK channel,pos32 (LE) */
-        if (f) { unsigned long p = fbuf[1] | (fbuf[2]<<8) |
-                                   (fbuf[3]<<16) | ((unsigned long)fbuf[4]<<24);
-                 fseek(f, (long)p, SEEK_SET); }
-        rx_prompt();
-        break;
-    case 0x16:                                  /* FTELL -> pos32 (LE) */
-        push_u32(f ? (unsigned long)ftell(f) : 0);
-        rx_prompt();
-        break;
-    case 0x17: {                                /* FEXT -> size32 (LE) */
-        unsigned long sz = 0;
-        if (f) { long cur = ftell(f); fseek(f, 0, SEEK_END);
-                 sz = (unsigned long)ftell(f); fseek(f, cur, SEEK_SET); }
-        push_u32(sz);
-        rx_prompt();
-        break; }
-    case 0x18: {                                /* FEOF -> 1 byte (1 = at EOF) */
-        int eof = 1;
-        if (f) { int c = fgetc(f); if (c != EOF) { ungetc(c, f); eof = 0; } }
-        rx_push((unsigned char)eof);
-        rx_prompt();
-        break; }
-    }
+    rx_err("BC", "Bad Command");
 }
 
 /* feed one byte written by the CPU into the command state machine */
@@ -358,76 +401,95 @@ static void vdap_write(unsigned char b)
 {
     switch (vstate) {
     case ST_CMD:
-        vcmd = b;
-        arglen = 0; hdrcnt = 0; wrf_len = 0;
-        switch (b) {
-        case 0x08:  vstate = ST_WRF_HDR; break;             /* WRF */
-        case 0x01:  /* DIR */
-        case 0x09:  /* OPW */
-        case 0x0A:  /* CLF */
-        case 0x04:  /* RDF */
-        case 0x06:  /* REN (rename) */
-        case 0x07:  /* DLF (delete) */
-        case 0x11:  /* FOPEN (data file) */
-        case 0x10:  vstate = ST_ARG; break;                 /* mode/echo */
-        case 0x12:  /* FCLOSE  */ fixneed = 1; goto fixstart;
-        case 0x13:  /* FBGET   */ fixneed = 1; goto fixstart;
-        case 0x14:  /* FBPUT   */ fixneed = 2; goto fixstart;
-        case 0x15:  /* FSEEK   */ fixneed = 5; goto fixstart;
-        case 0x16:  /* FTELL   */ fixneed = 1; goto fixstart;
-        case 0x17:  /* FEXT    */ fixneed = 1; goto fixstart;
-        case 0x18:  /* FEOF    */ fixneed = 1;
-        fixstart:   fixgot = 0; vstate = ST_FIXED; break;
-        default:    /* unknown single-byte command: just re-prompt */
-                    rx_prompt(); break;
-        }
-        break;
-
-    case ST_ARG:
-        if (b == 0x0D) {            /* CR ends the argument */
-            arg[arglen] = 0;
-            switch (vcmd) {
-            case 0x01: cmd_dir(arg);        break;          /* no prompt */
-            case 0x09: cmd_open_write(arg); break;
-            case 0x0A: cmd_close(arg);      break;
-            case 0x04: cmd_read_stream(arg);break;
-            case 0x06: cmd_rename(arg);     break;
-            case 0x07: cmd_delete(arg);     break;
-            case 0x11: cmd_fopen(arg);      break;
-            case 0x10: rx_prompt();         break;
-            default:   rx_prompt();         break;
-            }
-            vstate = ST_CMD;
-        } else if (arglen < (int)sizeof(arg) - 1) {
+        arglen = 0;
+        if (!scs_mode) {                    /* extended mode: text lines only */
+            if (b == 0x0D) { text_dispatch(""); break; }
             arg[arglen++] = (char)b;
+            vstate = ST_TEXT;
+            break;
+        }
+        vcmd = b;
+        switch (b) {
+        case 0x01: case 0x04: case 0x07: case 0x09:
+        case 0x0A: case 0x0C: case 0x0E:
+        case 0x10: case 0x11:
+            vstate = ST_NAMEARG; break;     /* ASCII argument (or none) + CR */
+        case 0x08: case 0x0B: case 0x28:
+            parcnt = 0; parval = 0;
+            vstate = ST_BINPAR; break;      /* ' ' + dword (MSB first) + CR */
+        case 0x0D:
+            rx_prompt(); break;             /* bare CR: disk presence check */
+        default:
+            if (b >= 0x20 && b < 0x7F) {    /* ASCII text command in SCS mode */
+                arg[arglen++] = (char)b;
+                vstate = ST_TEXT;
+            } else {
+                vcmd = 0;                   /* unknown opcode: eat until CR */
+                vstate = ST_NAMEARG;
+            }
+            break;
         }
         break;
 
-    case ST_FIXED:
-        fbuf[fixgot++] = b;
-        if (fixgot >= fixneed) { cmd_fixed(vcmd); vstate = ST_CMD; }
+    case ST_TEXT:
+        if (b == 0x0D) { arg[arglen] = 0; vstate = ST_CMD; text_dispatch(arg); }
+        else if (arglen < (int)sizeof(arg) - 1) arg[arglen++] = (char)b;
         break;
 
-    case ST_WRF_HDR:
-        /* layout: <space> L3 L2 L1 L0 <CR>, then wrf_len data bytes        */
-        if (hdrcnt >= 1 && hdrcnt <= 4)
-            wrf_len = (wrf_len << 8) | b;
-        hdrcnt++;
-        if (hdrcnt == 6) {          /* consumed space + 4 len bytes + CR */
-            wrf_rem = wrf_len;
-            DBG("VDIP: WRF len=%lu\n", wrf_len);
-            if (wrf_rem == 0) { rx_prompt(); vstate = ST_CMD; }
-            else              { vstate = ST_WRF_DATA; }
+    case ST_NAMEARG:
+        if (b != 0x0D) {
+            if (arglen < (int)sizeof(arg) - 1) arg[arglen++] = (char)b;
+            break;
         }
+        arg[arglen] = 0;
+        vstate = ST_CMD;
+        {
+            const char *a = arg;
+            while (*a == ' ') a++;
+            switch (vcmd) {
+            case 0x01: if (*a) cmd_dirfile(a); else cmd_dir();   break;
+            case 0x04: cmd_read_stream(a);                       break;
+            case 0x07: cmd_delete(a);                            break;
+            case 0x09: cmd_opw(a);                               break;
+            case 0x0A: cmd_clf(a);                               break;
+            case 0x0C: cmd_rename(a);                            break;
+            case 0x0E: cmd_opr(a);                               break;
+            case 0x10: scs_mode = 1; rx_prompt();                break;
+            case 0x11: scs_mode = 0; rx_prompt();                break;
+            default:   rx_err("BC", "Bad Command");              break;
+            }
+        }
+        break;
+
+    case ST_BINPAR:
+        /* ' ' + 4 value bytes + CR.  The value bytes are BINARY -- they may
+         * be 0x20 or 0x0D themselves -- so parse strictly by position. */
+        if (parcnt == 0) {
+            if (b != ' ') { vstate = ST_CMD; rx_err("BC", "Bad Command"); break; }
+        } else if (parcnt <= 4) {
+            parval = (parval << 8) | b;     /* MSB first */
+        } else {
+            vstate = ST_CMD;
+            if (b != 0x0D) { rx_err("BC", "Bad Command"); break; }
+            switch (vcmd) {
+            case 0x0B: cmd_rdf(parval); break;
+            case 0x28: cmd_sek(parval); break;
+            case 0x08:                      /* WRF: the data follows */
+                wrf_rem = parval;
+                wrf_ok = (omode == 2);
+                DBG("VDIP: WRF %lu (%s)\n", parval, wrf_ok ? "ok" : "no write file");
+                if (wrf_rem == 0) cmd_wrf_done();
+                else              vstate = ST_WRF_DATA;
+                break;
+            }
+            break;
+        }
+        parcnt++;
         break;
 
     case ST_WRF_DATA:
-        if (wfile) fputc(b, wfile);
-        if (--wrf_rem == 0) {
-            if (wfile) fflush(wfile);
-            rx_prompt();
-            vstate = ST_CMD;
-        }
+        if (wrf_ok) fputc(b, ofile);
+        if (--wrf_rem == 0) { vstate = ST_CMD; cmd_wrf_done(); }
         break;
     }
 }
@@ -452,19 +514,18 @@ static int  valid = 0;              /* did we have a byte for a data read */
 static void vdip_hw_reset(void)
 {
     DBG("VDIP: hardware reset\n");
-    if (wfile) { fclose(wfile); wfile = NULL; }
-    for (int i = 1; i <= NCHAN; i++) if (chan[i]) { fclose(chan[i]); chan[i] = NULL; }
+    if (ofile) { fclose(ofile); ofile = NULL; }     /* unflushed tail is lost */
+    omode = 0;
     vstate = ST_CMD;
+    scs_mode = 0;               /* the chip powers up in the EXTENDED set */
     rx_reset();
     /* Power-on banner, matching the real VNC1L (firmware 0.3.68): a few verbose
-     * lines ending in the "D:>" disk-ready prompt.  vnc_reset drains this until
-     * the '>' and then sends "SCS\r" to enter the short command set.  (We model
-     * the chip as always understanding the short binary commands, so the ASCII
-     * "SCS\r" just reads as unknown bytes here -- harmless re-prompts.) */
+     * lines ending in the "D:\>" disk-ready prompt.  vnc_reset drains this
+     * until the '>' and then sends the ASCII "SCS\r" to enter the short set. */
     rx_push_str("Ver 0.3.68.DEPF On-Line:\r"
                 "Device Detected P2\r"
                 "No Upgrade\r"
-                "D:>\r");
+                "D:\\>\r");
     in_xfer = 0; bitcnt = 0;
 }
 
