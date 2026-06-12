@@ -507,12 +507,12 @@ BYTE gdp64_p60_in()
 
 void gdp64_p60_out(BYTE b)
 {
-    /* REAL GDP64 layout (confirmed on hardware -- and the firmware is now
-     * written against it): bits 6-7 = displayed page, bits 4-5 = write page.
-     * This was modelled backwards for years; the symmetric values most code
-     * writes (view==write) masked it. */
-    actualReadPage=(b & 0xC0) >> 6;
-    actualWritePage=(b & 0x30) >> 4;
+    /* GDP64K layout (Bauanleitung "Belegung des Seitenports", confirmed by
+     * the Grundprogramm, whose cursor blink writes the cursor to page 1 via
+     * bits 6-7 and toggles the DISPLAYED page in bits 4-5):
+     *   bits 4-5 = displayed page (Leseseite), bits 6-7 = write page. */
+    actualReadPage=(b & 0x30) >> 4;
+    actualWritePage=(b & 0xC0) >> 6;
     if (seite!=b)
     {
         contentChanged=1;
@@ -840,10 +840,9 @@ static void gdp64_screenshot(void)
     FILE *f = fopen(path, "wb");
     if (!f) return;
     Uint32 *pv = (Uint32 *)pages[actualReadPage]->pixels;   /* view page  */
-    Uint32 *pg = (Uint32 *)pages[2]->pixels;                /* graphics   */
     fprintf(f, "P6\n512 256\n255\n");
     for (int i = 0; i < 512 * 256; i++) {
-        Uint32 p = pv[i] | pg[i];                           /* ARGB8888   */
+        Uint32 p = pv[i];                                   /* ARGB8888   */
         unsigned char rgb[3] = { (p >> 16) & 0xFF, (p >> 8) & 0xFF, p & 0xFF };
         fwrite(rgb, 1, 3, f);
     }
@@ -902,21 +901,16 @@ int gdp64_set_vsync(BYTE vs)
     if (vs!=0)
     {
         status=(status | 2);
-        /* composite the current view page (text -- pages 0/1 double-buffered)
-         * with the graphics plane (page 2), so they appear overlaid.  Empty
-         * pixels are black (rgb 0), so ORing is the union of the lit pixels.
-         * The off-screen text back-buffer is NOT shown, giving flicker-free
-         * scrolling: the screen is redrawn on the hidden page, then the view
-         * flips to it. */
+        /* show the displayed page -- and ONLY it.  The real GDP64K page
+         * logic is a multiplexer: exactly one page reaches the monitor, no
+         * overlay, no compositing.  (An earlier version OR-composited page 2
+         * over the view page; real hardware does no such thing, and that
+         * fiction let firmware ship with graphics on a never-displayed
+         * page.) */
         if (contentChanged==1)
         {
-            static Uint32 comp[512*256];
-            Uint32 *pv=(Uint32*)pages[actualReadPage]->pixels;  /* view page */
-            Uint32 *pg=(Uint32*)pages[2]->pixels;               /* graphics  */
-            int i;
-            for (i=0; i<512*256; i++)
-                comp[i] = pv[i] | pg[i];
-            SDL_UpdateTexture(texture,NULL,comp,512*4);
+            Uint32 *pv=(Uint32*)pages[actualReadPage]->pixels;
+            SDL_UpdateTexture(texture,NULL,pv,512*4);
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer,texture,NULL,NULL);
             SDL_RenderPresent(renderer);
