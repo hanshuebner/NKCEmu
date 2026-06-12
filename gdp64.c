@@ -220,7 +220,11 @@ void DrawChar(unsigned char c)
                         for ( y1=0; y1<yMag; y1++)
                         {
                             if (ctrl2&8)
-                                DrawPixel(pages[actualWritePage],realX+y*yMag+y1,realY+x*xMag+x1,pen.r,pen.g,pen.b);
+                                /* vertical text: the real EF9366 rotates the
+                                 * glyph 270 degrees (readable bottom-to-top),
+                                 * not 90 -- confirmed on hardware.  Cell
+                                 * position and pen advance are unchanged. */
+                                DrawPixel(pages[actualWritePage],realX+(7-y)*yMag+y1,realY+(4-x)*xMag+x1,pen.r,pen.g,pen.b);
                             else
                                 DrawPixel(pages[actualWritePage],realX+x*xMag+x1,realY-y*yMag-y1,pen.r,pen.g,pen.b);
                         }
