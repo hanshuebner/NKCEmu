@@ -48,6 +48,7 @@ extern void
 init_io(bool), exit_io(void);
 extern int exatoi(char *);
 extern void vdip_set_dir(const char *);
+extern void flo3_set_image(const char *);
 extern void key_inject_file(const char *);
 int CAS_FILE=0;
 
@@ -141,7 +142,7 @@ int main(int argc, char *argv[])
     CAS_FILE=0;
     bool windowed=true;     /* default to windowed; -F forces fullscreen */
 
-    while ((opt = getopt(argc, argv, "slhiwFm:f:x:b:c:a:u:k:")) != -1)
+    while ((opt = getopt(argc, argv, "slhiwFm:f:x:b:c:a:u:k:d:")) != -1)
     {
         switch (opt)
         {
@@ -162,6 +163,7 @@ int main(int argc, char *argv[])
                       break;
             case 'a': a_offset = exatoi(optarg); break;        /* start address */
             case 'u': vdip_set_dir(optarg); break;             /* USB directory */
+            case 'd': flo3_set_image(optarg); break;           /* FLO3 floppy image */
             case 'k': key_inject_file(optarg); break;          /* inject keys */
             case 'c':                                          /* CAS file */
                 if ((CAS_FILE = open(optarg, O_RDWR | O_CREAT,

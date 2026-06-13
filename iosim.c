@@ -81,6 +81,10 @@ extern BYTE cas_pCB_in();
 extern void cas_pCB_out(BYTE);
 extern BYTE vdip_p30_in(void);
 extern void vdip_p30_out(BYTE);
+extern BYTE flo3_pC0_in(void), flo3_pC1_in(void), flo3_pC2_in(void),
+            flo3_pC3_in(void), flo3_pC4_in(void);
+extern void flo3_pC0_out(BYTE), flo3_pC1_out(BYTE), flo3_pC2_out(BYTE),
+            flo3_pC3_out(BYTE), flo3_pC4_out(BYTE);
 extern BYTE timer_p31_in(void), timer_p32_in(void),
             timer_p33_in(void), timer_p34_in(void);
 extern void timer_p31_out(BYTE), timer_p32_out(BYTE),
@@ -153,6 +157,13 @@ void init_io(bool windowed)
     out_port[0xCB]=cas_pCB_out;
     in_port[0x30]=vdip_p30_in;
     out_port[0x30]=vdip_p30_out;
+    // FLO3 floppy (FD1797) base 0xC0 -> C0=cmd/status C1=track C2=sector
+    //                                   C3=data C4=control/DRQ+INTRQ
+    in_port[0xC0]=flo3_pC0_in;   out_port[0xC0]=flo3_pC0_out;
+    in_port[0xC1]=flo3_pC1_in;   out_port[0xC1]=flo3_pC1_out;
+    in_port[0xC2]=flo3_pC2_in;   out_port[0xC2]=flo3_pC2_out;
+    in_port[0xC3]=flo3_pC3_in;   out_port[0xC3]=flo3_pC3_out;
+    in_port[0xC4]=flo3_pC4_in;   out_port[0xC4]=flo3_pC4_out;
     in_port[0x31]=timer_p31_in;   out_port[0x31]=timer_p31_out;
     in_port[0x32]=timer_p32_in;   out_port[0x32]=timer_p32_out;
     in_port[0x33]=timer_p33_in;   out_port[0x33]=timer_p33_out;
