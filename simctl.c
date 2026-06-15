@@ -1014,7 +1014,8 @@ static int load_eeprom(int fd, char *fn)
 static void do_unix(char *s)
 {
 	int_off();
-	system(s);
+	if (system(s) == -1)
+		perror("system");
 	int_on();
 }
 
