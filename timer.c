@@ -11,6 +11,7 @@
  *  function per port.
  ***************************************************************************/
 
+#include <stddef.h>
 #include <sys/time.h>
 #include "sim.h"
 
