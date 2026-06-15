@@ -56,40 +56,36 @@ int CAS_FILE=0;
  *  This function saves the CPU and the memory into the file core.z80
  *
  */
+/* The core.z80 layout: every CPU register in order, then the two 32K RAM
+ * halves.  save_core and load_core walk the same table so the two stay in
+ * sync. */
+#define CORE_PARTS {                                                         \
+    {&A, sizeof A}, {&F, sizeof F}, {&B, sizeof B}, {&C, sizeof C},           \
+    {&D, sizeof D}, {&E, sizeof E}, {&H, sizeof H}, {&L, sizeof L},           \
+    {&A_, sizeof A_}, {&F_, sizeof F_}, {&B_, sizeof B_}, {&C_, sizeof C_},   \
+    {&D_, sizeof D_}, {&E_, sizeof E_}, {&H_, sizeof H_}, {&L_, sizeof L_},   \
+    {&I, sizeof I}, {&IFF, sizeof IFF}, {&R, sizeof R}, {&PC, sizeof PC},     \
+    {&STACK, sizeof STACK}, {&IX, sizeof IX}, {&IY, sizeof IY},               \
+    {ram, 32768}, {ram + 32768, 32768},                                      \
+}
+
 static void save_core(void)
 {
     int fd;
+    struct { const void *p; size_t n; } parts[] = CORE_PARTS;
+    size_t i;
 
     if ((fd = open("core.z80", O_WRONLY | O_CREAT, 0600)) == -1)
     {
         puts("can't open file core.z80");
         return;
     }
-    write(fd, (char *) &A, sizeof(A));
-    write(fd, (char *) &F, sizeof(F));
-    write(fd, (char *) &B, sizeof(B));
-    write(fd, (char *) &C, sizeof(C));
-    write(fd, (char *) &D, sizeof(D));
-    write(fd, (char *) &E, sizeof(E));
-    write(fd, (char *) &H, sizeof(H));
-    write(fd, (char *) &L, sizeof(L));
-    write(fd, (char *) &A_, sizeof(A_));
-    write(fd, (char *) &F_, sizeof(F_));
-    write(fd, (char *) &B_, sizeof(B_));
-    write(fd, (char *) &C_, sizeof(C_));
-    write(fd, (char *) &D_, sizeof(D_));
-    write(fd, (char *) &E_, sizeof(E_));
-    write(fd, (char *) &H_, sizeof(H_));
-    write(fd, (char *) &L_, sizeof(L_));
-    write(fd, (char *) &I, sizeof(I));
-    write(fd, (char *) &IFF, sizeof(IFF));
-    write(fd, (char *) &R, sizeof(R));
-    write(fd, (char *) &PC, sizeof(PC));
-    write(fd, (char *) &STACK, sizeof(STACK));
-    write(fd, (char *) &IX, sizeof(IX));
-    write(fd, (char *) &IY, sizeof(IY));
-    write(fd, (char *) ram, 32768);
-    write(fd, (char *) ram + 32768, 32768);
+    for (i = 0; i < sizeof parts / sizeof parts[0]; i++)
+        if (write(fd, parts[i].p, parts[i].n) != (ssize_t) parts[i].n)
+        {
+            perror("write core.z80");
+            break;
+        }
     close(fd);
 }
 
@@ -100,37 +96,20 @@ static void save_core(void)
 static void load_core(void)
 {
     int fd;
+    struct { void *p; size_t n; } parts[] = CORE_PARTS;
+    size_t i;
 
     if ((fd = open("core.z80", O_RDONLY)) == -1)
     {
         puts("can't open file core.z80");
         return;
     }
-    read(fd, (char *) &A, sizeof(A));
-    read(fd, (char *) &F, sizeof(F));
-    read(fd, (char *) &B, sizeof(B));
-    read(fd, (char *) &C, sizeof(C));
-    read(fd, (char *) &D, sizeof(D));
-    read(fd, (char *) &E, sizeof(E));
-    read(fd, (char *) &H, sizeof(H));
-    read(fd, (char *) &L, sizeof(L));
-    read(fd, (char *) &A_, sizeof(A_));
-    read(fd, (char *) &F_, sizeof(F_));
-    read(fd, (char *) &B_, sizeof(B_));
-    read(fd, (char *) &C_, sizeof(C_));
-    read(fd, (char *) &D_, sizeof(D_));
-    read(fd, (char *) &E_, sizeof(E_));
-    read(fd, (char *) &H_, sizeof(H_));
-    read(fd, (char *) &L_, sizeof(L_));
-    read(fd, (char *) &I, sizeof(I));
-    read(fd, (char *) &IFF, sizeof(IFF));
-    read(fd, (char *) &R, sizeof(R));
-    read(fd, (char *) &PC, sizeof(PC));
-    read(fd, (char *) &STACK, sizeof(STACK));
-    read(fd, (char *) &IX, sizeof(IX));
-    read(fd, (char *) &IY, sizeof(IY));
-    read(fd, (char *) ram, 32768);
-    read(fd, (char *) ram + 32768, 32768);
+    for (i = 0; i < sizeof parts / sizeof parts[0]; i++)
+        if (read(fd, parts[i].p, parts[i].n) != (ssize_t) parts[i].n)
+        {
+            perror("read core.z80");
+            break;
+        }
     close(fd);
 }
 

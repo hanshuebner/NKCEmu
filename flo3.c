@@ -157,8 +157,9 @@ static void start_read(void)
     long off = sec_offset();
     if (!img || off < 0) { r_status = ST_RNF; intrq = 1; xfer = 0; return; }
     fseek(img, off, SEEK_SET);
-    memset(buf, 0, sizeof buf);
-    fread(buf, 1, g_bps, img);
+    memset(buf, 0, sizeof buf);     /* short read -> sector tail stays blank */
+    if (fread(buf, 1, g_bps, img) != (size_t) g_bps)
+        dbg("flo3: short read at offset %ld\n", off);
     xfer = 1; xidx = 0;
     r_data = buf[0];
     r_status = ST_BUSY;            /* busy until the last byte is moved */

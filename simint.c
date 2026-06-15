@@ -93,6 +93,7 @@ static void term_int(int sig)
 	 * terminal and _exit; the OS reclaims SDL's window/memory on exit. */
 	tcsetattr(0, TCSADRAIN, &old_term);
 	static const char msg[] = "\nKilled by user\n";
-	write(2, msg, sizeof(msg) - 1);
+	ssize_t n = write(2, msg, sizeof(msg) - 1);   /* best-effort in handler */
+	(void) n;
 	_exit(0);
 }

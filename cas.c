@@ -47,7 +47,7 @@ BYTE cas_pCB_in()
   BYTE byte=0xff;
   if (CAS_FILE!=0) 
   {
-      read(CAS_FILE,&byte,1);
+      if (read(CAS_FILE, &byte, 1) != 1) byte = 0xff;   /* EOF/error -> idle */
   }
   return byte;
 }
@@ -56,6 +56,6 @@ void cas_pCB_out(BYTE data)
 {
     if (CAS_FILE!=0) 
     {
-      write(CAS_FILE, &data,1);  
+      if (write(CAS_FILE, &data, 1) != 1) perror("cas write");
     }
 }

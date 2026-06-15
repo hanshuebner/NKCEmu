@@ -76,6 +76,17 @@ static void cpu_err_msg(void);
 struct termios old_term;
 
 /*
+ *	Read one line of interactive input into buf.  On EOF or error the
+ *	buffer is left as an empty string, so callers reading a new value
+ *	simply see "no change entered".
+ */
+static void prompt_line(char *buf, size_t n)
+{
+	if (fgets(buf, (int) n, stdin) == NULL)
+		buf[0] = '\0';
+}
+
+/*
  *	The function "mon()" is the dialog user interface, called
  *	from the simulation just after program start.
  */
@@ -346,7 +357,7 @@ static void do_modify(char *s)
 	for (;;) {
 		printf("%04x = %02x : ", (unsigned int)(wrk_ram - ram),
 					 *wrk_ram);
-		fgets(nv, sizeof(nv), stdin);
+		prompt_line(nv, sizeof nv);
 		if (nv[0] == '\n') {
 			wrk_ram++;
 			if (wrk_ram > ram + 65535)
@@ -446,7 +457,7 @@ static void do_port(char *s)
 		s++;
 	port = exatoi(s);
 	printf("%02x = %02x : ", port, io_in(port));
-	fgets(nv, sizeof(nv), stdin);
+	prompt_line(nv, sizeof nv);
 	if (isxdigit((int)*nv))
 		io_out(port, (BYTE) exatoi(nv));
 }
@@ -466,141 +477,141 @@ static void do_reg(char *s)
 	} else {
 		if (strncmp(s, "bc'", 3) == 0) {
 			printf("BC' = %04x : ",	B_ * 256 + C_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			B_ = (exatoi(nv) & 0xffff) / 256;
 			C_ = (exatoi(nv) & 0xffff) % 256;
 		} else if (strncmp(s, "de'", 3)	== 0) {
 			printf("DE' = %04x : ",	D_ * 256 + E_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			D_ = (exatoi(nv) & 0xffff) / 256;
 			E_ = (exatoi(nv) & 0xffff) % 256;
 		} else if (strncmp(s, "hl'", 3)	== 0) {
 			printf("HL' = %04x : ",	H_ * 256 + L_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			H_ = (exatoi(nv) & 0xffff) / 256;
 			L_ = (exatoi(nv) & 0xffff) % 256;
 		} else if (strncmp(s, "pc", 2) == 0) {
 			printf("PC = %04x : ", (unsigned int)(PC - ram));
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			PC = ram + (exatoi(nv) & 0xffff);
 		} else if (strncmp(s, "bc", 2) == 0) {
 			printf("BC = %04x : ", B * 256 + C);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			B = (exatoi(nv)	& 0xffff) / 256;
 			C = (exatoi(nv)	& 0xffff) % 256;
 		} else if (strncmp(s, "de", 2) == 0) {
 			printf("DE = %04x : ", D * 256 + E);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			D = (exatoi(nv)	& 0xffff) / 256;
 			E = (exatoi(nv)	& 0xffff) % 256;
 		} else if (strncmp(s, "hl", 2) == 0) {
 			printf("HL = %04x : ", H * 256 + L);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			H = (exatoi(nv)	& 0xffff) / 256;
 			L = (exatoi(nv)	& 0xffff) % 256;
 		} else if (strncmp(s, "ix", 2) == 0) {
 			printf("IX = %04x : ", IX);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			IX = exatoi(nv)	& 0xffff;
 		} else if (strncmp(s, "iy", 2) == 0) {
 			printf("IY = %04x : ", IY);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			IY = exatoi(nv)	& 0xffff;
 		} else if (strncmp(s, "sp", 2) == 0) {
 			printf("SP = %04x : ", (unsigned int)(STACK - ram));
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			STACK =	ram + (exatoi(nv) & 0xffff);
 		} else if (strncmp(s, "fs", 2) == 0) {
 			printf("S-FLAG = %c : ", (F & S_FLAG) ?	'1' : '0');
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			F = (exatoi(nv)) ? (F |	S_FLAG)	: (F & ~S_FLAG);
 		} else if (strncmp(s, "fz", 2) == 0) {
 			printf("Z-FLAG = %c : ", (F & Z_FLAG) ?	'1' : '0');
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			F = (exatoi(nv)) ? (F |	Z_FLAG)	: (F & ~Z_FLAG);
 		} else if (strncmp(s, "fh", 2) == 0) {
 			printf("H-FLAG = %c : ", (F & H_FLAG) ?	'1' : '0');
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			F = (exatoi(nv)) ? (F |	H_FLAG)	: (F & ~H_FLAG);
 		} else if (strncmp(s, "fp", 2) == 0) {
 			printf("P-FLAG = %c : ", (F & P_FLAG) ?	'1' : '0');
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			F = (exatoi(nv)) ? (F |	P_FLAG)	: (F & ~P_FLAG);
 		} else if (strncmp(s, "fn", 2) == 0) {
 			printf("N-FLAG = %c : ", (F & N_FLAG) ?	'1' : '0');
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			F = (exatoi(nv)) ? (F |	N_FLAG)	: (F & ~N_FLAG);
 		} else if (strncmp(s, "fc", 2) == 0) {
 			printf("C-FLAG = %c : ", (F & C_FLAG) ?	'1' : '0');
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			F = (exatoi(nv)) ? (F |	C_FLAG)	: (F & ~C_FLAG);
 		} else if (strncmp(s, "a'", 2) == 0) {
 			printf("A' = %02x : ", A_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			A_ = exatoi(nv)	& 0xff;
 		} else if (strncmp(s, "f'", 2) == 0) {
 			printf("F' = %02x : ", F_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			F_ = exatoi(nv)	& 0xff;
 		} else if (strncmp(s, "b'", 2) == 0) {
 			printf("B' = %02x : ", B_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			B_ = exatoi(nv)	& 0xff;
 		} else if (strncmp(s, "c'", 2) == 0) {
 			printf("C' = %02x : ", C_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			C_ = exatoi(nv)	& 0xff;
 		} else if (strncmp(s, "d'", 2) == 0) {
 			printf("D' = %02x : ", D_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			D_ = exatoi(nv)	& 0xff;
 		} else if (strncmp(s, "e'", 2) == 0) {
 			printf("E' = %02x : ", E_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			E_ = exatoi(nv)	& 0xff;
 		} else if (strncmp(s, "h'", 2) == 0) {
 			printf("H' = %02x : ", H_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			H_ = exatoi(nv)	& 0xff;
 		} else if (strncmp(s, "l'", 2) == 0) {
 			printf("L' = %02x : ", L_);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			L_ = exatoi(nv)	& 0xff;
 		} else if (strncmp(s, "i", 1) == 0) {
 			printf("I = %02x : ", I);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			I = exatoi(nv) & 0xff;
 		} else if (strncmp(s, "a", 1) == 0) {
 			printf("A = %02x : ", A);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			A = exatoi(nv) & 0xff;
 		} else if (strncmp(s, "f", 1) == 0) {
 			printf("F = %02x : ", F);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			F = exatoi(nv) & 0xff;
 		} else if (strncmp(s, "b", 1) == 0) {
 			printf("B = %02x : ", B);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			B = exatoi(nv) & 0xff;
 		} else if (strncmp(s, "c", 1) == 0) {
 			printf("C = %02x : ", C);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			C = exatoi(nv) & 0xff;
 		} else if (strncmp(s, "d", 1) == 0) {
 			printf("D = %02x : ", D);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			D = exatoi(nv) & 0xff;
 		} else if (strncmp(s, "e", 1) == 0) {
 			printf("E = %02x : ", E);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			E = exatoi(nv) & 0xff;
 		} else if (strncmp(s, "h", 1) == 0) {
 			printf("H = %02x : ", H);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			H = exatoi(nv) & 0xff;
 		} else if (strncmp(s, "l", 1) == 0) {
 			printf("L = %02x : ", L);
-			fgets(nv, sizeof(nv), stdin);
+			prompt_line(nv, sizeof nv);
 			L = exatoi(nv) & 0xff;
 		} else
 			printf("can't change register %s\n", nv);
@@ -917,7 +928,11 @@ static int do_getfile(char *s)
     {
         return (load_eeprom(fd, fn));
     }
-	read(fd, (char *) fileb, 5); /*	read first 5 bytes of file */
+	if (read(fd, (char *) fileb, 5) != 5) {	/* read first 5 bytes of file */
+		printf("can't read file %s\n", fn);
+		close(fd);
+		return(1);
+	}
 	if (*fileb == (BYTE) 0xff) {	/* Mostek header ? */
 		lseek(fd, 0l, 0);
 		return (load_mos(fd, fn));
@@ -944,7 +959,11 @@ static int load_mos(int fd, char *fn)
 	unsigned count,	readed;
 	int rc = 0;
 
-	read(fd, (char *) fileb, 3);	/* read load address */
+	if (read(fd, (char *) fileb, 3) != 3) {	/* read load address */
+		printf("can't read header of file %s\n", fn);
+		close(fd);
+		return(1);
+	}
 	if (wrk_ram == NULL)		/* and set if not given */
 		wrk_ram	= ram +	(fileb[2] * 256	+ fileb[1]);
 	count =	ram + 65535 - wrk_ram;

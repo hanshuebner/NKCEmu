@@ -287,7 +287,8 @@ static void cmd_clf(const char *name)
     }
     if (omode == 2) {               /* write files truncate at the pointer */
         fflush(ofile);
-        ftruncate(fileno(ofile), ftell(ofile));
+        if (ftruncate(fileno(ofile), ftell(ofile)) != 0)
+            perror("vdip ftruncate");
     }
     fclose(ofile); ofile = NULL; omode = 0;
     DBG("VDIP: CLF '%s'\n", name);
@@ -327,7 +328,8 @@ static void cmd_wrf_done(void)      /* runs after the data bytes arrived */
      * after a write operation" -- modelled literally, so the firmware's
      * matching assumption is exercised here.  (To be verified on the real
      * chip; relax both sides together if it turns out kinder.) */
-    ftruncate(fileno(ofile), ftell(ofile));
+    if (ftruncate(fileno(ofile), ftell(ofile)) != 0)
+        perror("vdip ftruncate");
     rx_prompt();
 }
 
