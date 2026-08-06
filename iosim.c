@@ -35,6 +35,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <SDL.h>
@@ -49,6 +50,9 @@ extern void initGDP64(bool);
  */
 static BYTE io_trap_in(void);
 static void io_trap_out(BYTE);
+static void ay_p50_out(BYTE);
+static BYTE ay_p51_in(void);
+static void ay_p51_out(BYTE);
 extern BYTE gdp64_p60_in();
 extern void gdp64_p60_out(BYTE);
 extern void gdp64_p61_out(BYTE);
@@ -129,6 +133,9 @@ void init_io(bool windowed)
     in_port[0x60]=gdp64_p60_in;
     out_port[0x60]=gdp64_p60_out;
     out_port[0x61]=gdp64_p61_out;   /* GDP64HS hardscroll (no-op without -H) */
+    out_port[0x50]=ay_p50_out;      /* SOUND card (AY-3-8910 register file) */
+    in_port[0x51]=ay_p51_in;
+    out_port[0x51]=ay_p51_out;
     in_port[0x68]=key_p68_in;
     out_port[0x68]=key_p68_out;
     in_port[0x69]=key_p69_in;
@@ -238,5 +245,24 @@ static void io_trap_out(BYTE b)
         cpu_state = STOPPED;
     }
     return;
+}
+
+/*
+ *	NKC SOUND card (AY-3-8910): address latch on 0x50, data on 0x51.
+ *	A register file with the chip's real register widths, readable back --
+ *	enough for firmware probes and register-level tests; no audio is
+ *	rendered.  NKC_AY_DEBUG=1 logs every register write to stderr.
+ */
+static BYTE ay_reg[16], ay_sel;
+static const BYTE ay_mask[16] = {0xFF,0x0F,0xFF,0x0F,0xFF,0x0F,0x1F,0xFF,
+                                 0x1F,0x1F,0x1F,0xFF,0xFF,0x0F,0xFF,0xFF};
+static void ay_p50_out(BYTE b) { ay_sel = b & 0x0F; }
+static BYTE ay_p51_in(void) { return ay_reg[ay_sel]; }
+static void ay_p51_out(BYTE b)
+{
+    static int dbg = -1;
+    ay_reg[ay_sel] = b & ay_mask[ay_sel];
+    if (dbg < 0) dbg = getenv("NKC_AY_DEBUG") ? 1 : 0;
+    if (dbg) fprintf(stderr, "[ay R%d=%02X]", ay_sel, ay_reg[ay_sel]);
 }
 
