@@ -85,8 +85,10 @@ int contentChanged=0;        /* something new written? */
  *   - port 60h (read): a latch that captures the framebuffer byte a CMD 0Fh
  *     ("direct image memory access") transfers on the next display cycle.
  * Writing +n to the scroll port shifts the picture DOWN n lines (Bauanleitung
- * GDP64HS).  Read-back bit order/polarity here: bit i = pixel x0+i is lit --
- * verify against real hardware before porting hardcopy tools. */
+ * GDP64HS).  Read-back latch layout (per the Bauanleitung's worked example --
+ * one dot at x=256, X register 256, reads FEh -- and its hardcopy program,
+ * which bit-reverses and complements every byte): bit i = pixel x0+i of the
+ * byte-aligned byte containing the pen, and a LIT pixel reads as 0. */
 int  gdp64hs=0;              /* 1 = emulate the GDP64HS additions */
 static BYTE scrollofs=0;     /* hardscroll offset (port 61h) */
 static BYTE rdlatch=0xFF;    /* CMD-0Fh read-back latch (port 60h reads) */
@@ -680,11 +682,11 @@ void gdp64_p70_out(BYTE b)
                     Uint32 *pv  = (Uint32 *)pages[actualReadPage]->pixels;
                     Uint32 lit  = SDL_MapRGB(pages[actualReadPage]->format,
                                              fg.r, fg.g, fg.b);
-                    BYTE v = 0;
+                    BYTE v = 0xFF;              /* lit pixels read as 0 */
                     int i;
                     for (i = 0; i < 8; i++)
                         if (pv[row*512 + ((x0 + i) & 511)] == lit)
-                            v |= (BYTE)(1 << i);
+                            v &= (BYTE)~(1 << i);
                     rdlatch = v;
                 }
                 break;
