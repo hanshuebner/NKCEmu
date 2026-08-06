@@ -48,6 +48,7 @@ extern void
 init_io(bool), exit_io(void);
 extern int exatoi(char *);
 extern void vdip_set_dir(const char *);
+extern int  gdp64hs;                    /* gdp64.c: -H emulates the GDP64HS */
 extern void flo3_set_image(const char *);
 extern void key_inject_file(const char *);
 int CAS_FILE=0;
@@ -121,7 +122,7 @@ int main(int argc, char *argv[])
     CAS_FILE=0;
     bool windowed=true;     /* default to windowed; -F forces fullscreen */
 
-    while ((opt = getopt(argc, argv, "slhiwFm:f:x:b:c:a:u:k:d:")) != -1)
+    while ((opt = getopt(argc, argv, "slhiwFHm:f:x:b:c:a:u:k:d:")) != -1)
     {
         switch (opt)
         {
@@ -131,6 +132,7 @@ int main(int argc, char *argv[])
             case 'i': i_flag = 1; break;            /* trap I/O on unused ports */
             case 'w': windowed = true; break;       /* windowed (the default) */
             case 'F': windowed = false; break;      /* fullscreen */
+            case 'H': gdp64hs = 1; break;           /* emulate the GDP64HS */
             case 'm': m_flag = exatoi(optarg); break;          /* init memory */
             case 'f': f_flag = atoi(optarg);                   /* CPU MHz */
                       tmax = f_flag * 10000; break;
@@ -153,7 +155,7 @@ int main(int argc, char *argv[])
                 }
                 break;
             default:    /* '?' : unknown option or missing argument */
-                fprintf(stderr, "usage: %s [-s] [-l] [-i] [-h] [-w] [-F] "
+                fprintf(stderr, "usage: %s [-s] [-l] [-i] [-h] [-w] [-F] [-H] "
                         "[-m hex] [-f MHz] [-x file] [-b file] [-c file] "
                         "[-a hex] [-u dir] [-k file]\n", pn);
                 fputs("\ts = save core and cpu on exit\n"
@@ -161,6 +163,7 @@ int main(int argc, char *argv[])
                       "\ti = trap on I/O to unused ports\n"
                       "\th = execute HALT op-code\n"
                       "\tw = windowed (default)    F = fullscreen\n"
+                      "\tH = emulate the GDP64HS (hardscroll + read-back)\n"
                       "\tm = init memory with hex value\n"
                       "\tf = CPU frequency in MHz\n"
                       "\tx = load and execute file\n"

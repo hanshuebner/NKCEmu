@@ -51,6 +51,7 @@ static BYTE io_trap_in(void);
 static void io_trap_out(BYTE);
 extern BYTE gdp64_p60_in();
 extern void gdp64_p60_out(BYTE);
+extern void gdp64_p61_out(BYTE);
 extern BYTE key_p68_in();
 extern void key_p68_out(BYTE);
 extern BYTE key_p69_in();
@@ -127,6 +128,7 @@ void init_io(bool windowed)
     // set I/O hooks for NKC
     in_port[0x60]=gdp64_p60_in;
     out_port[0x60]=gdp64_p60_out;
+    out_port[0x61]=gdp64_p61_out;   /* GDP64HS hardscroll (no-op without -H) */
     in_port[0x68]=key_p68_in;
     out_port[0x68]=key_p68_out;
     in_port[0x69]=key_p69_in;

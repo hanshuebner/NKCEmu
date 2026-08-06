@@ -77,6 +77,33 @@ int actualWritePage=0;       /* on which page do we write at the moment? */
 int actualReadPage=0;        /* which page is shown at the moment? */
 int contentChanged=0;        /* something new written? */
 
+/* ---- GDP64HS (-H option) ----
+ * The HS board keeps the same EF9366 and adds, on the 60h/61h decode:
+ *   - port 61h (write): hardscroll offset, added to the DISPLAY addressing
+ *     only (drawing still hits the unrotated framebuffer), cyclic over the
+ *     256 raster lines; data line D0 is not wired, so only even offsets act;
+ *   - port 60h (read): a latch that captures the framebuffer byte a CMD 0Fh
+ *     ("direct image memory access") transfers on the next display cycle.
+ * Writing +n to the scroll port shifts the picture DOWN n lines (Bauanleitung
+ * GDP64HS).  Read-back bit order/polarity here: bit i = pixel x0+i is lit --
+ * verify against real hardware before porting hardcopy tools. */
+int  gdp64hs=0;              /* 1 = emulate the GDP64HS additions */
+static BYTE scrollofs=0;     /* hardscroll offset (port 61h) */
+static BYTE rdlatch=0xFF;    /* CMD-0Fh read-back latch (port 60h reads) */
+static Uint32 scrollbuf[512*256];   /* rotated copy for display/screenshot */
+
+/* display_pixels -- the view page as the monitor sees it: rotated down by
+ * the hardscroll offset (screen row y fetches page row (y - ofs) & 255). */
+static Uint32 *display_pixels(void)
+{
+    Uint32 *pv = (Uint32 *)pages[actualReadPage]->pixels;
+    int y;
+    if (!gdp64hs || scrollofs == 0) return pv;
+    for (y = 0; y < 256; y++)
+        memcpy(scrollbuf + y*512, pv + ((y - scrollofs) & 255)*512, 512*4);
+    return scrollbuf;
+}
+
 /* ---- test/debug hooks ----
  * Keyboard injection: feed bytes from a file as if typed (-K option), so BASIC
  * can be driven headlessly.  Console echo: log every glyph the GDP draws
@@ -502,7 +529,23 @@ void clearScreen()
 
 BYTE gdp64_p60_in()
 {
+    /* GDP64HS: reading the page port returns the CMD-0Fh read-back latch.
+     * The plain GDP64K drives nothing here (the value floats); returning the
+     * write-only latch's last value is as good a float as any -- and, being
+     * constant across reads, correctly fails the firmware's HS probe. */
+    if (gdp64hs)
+        return rdlatch;
     return seite;
+}
+
+void gdp64_p61_out(BYTE b)
+{
+    /* GDP64HS hardscroll offset; D0 is not wired on the board */
+    if (gdp64hs)
+    {
+        scrollofs = b & 0xFE;
+        contentChanged = 1;
+    }
 }
 
 void gdp64_p60_out(BYTE b)
@@ -626,7 +669,27 @@ void gdp64_p70_out(BYTE b)
         case 14: /* set Y to 0 */
                 penY=0;
                 break;
-                
+
+        case 15: /* direct image memory access on the next free cycle: the
+                  * GDP64HS captures the display read of the byte addressed
+                  * by the X/Y registers into the port-60h latch */
+                if (gdp64hs)
+                {
+                    int x0  = penX & ~7;
+                    int row = 255 - (penY & 0xFF);
+                    Uint32 *pv  = (Uint32 *)pages[actualReadPage]->pixels;
+                    Uint32 lit  = SDL_MapRGB(pages[actualReadPage]->format,
+                                             fg.r, fg.g, fg.b);
+                    BYTE v = 0;
+                    int i;
+                    for (i = 0; i < 8; i++)
+                        if (pv[row*512 + ((x0 + i) & 511)] == lit)
+                            v |= (BYTE)(1 << i);
+                    rdlatch = v;
+                }
+                break;
+
+
         case 16: /* draw horizontal line in positive x direction */
                 DrawHLine(penX, 255-penY,penX+deltax);
                 contentChanged=1;
@@ -839,7 +902,7 @@ static void gdp64_screenshot(void)
     if (!path || !*path) path = "/tmp/nkcshot.ppm";
     FILE *f = fopen(path, "wb");
     if (!f) return;
-    Uint32 *pv = (Uint32 *)pages[actualReadPage]->pixels;   /* view page  */
+    Uint32 *pv = display_pixels();      /* view page, hardscroll applied */
     fprintf(f, "P6\n512 256\n255\n");
     for (int i = 0; i < 512 * 256; i++) {
         Uint32 p = pv[i];                                   /* ARGB8888   */
@@ -909,7 +972,7 @@ int gdp64_set_vsync(BYTE vs)
          * page.) */
         if (contentChanged==1)
         {
-            Uint32 *pv=(Uint32*)pages[actualReadPage]->pixels;
+            Uint32 *pv=display_pixels();        /* hardscroll applied */
             SDL_UpdateTexture(texture,NULL,pv,512*4);
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer,texture,NULL,NULL);
