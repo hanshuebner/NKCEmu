@@ -88,6 +88,24 @@
 typedef	unsigned short WORD;		/* 16 bit unsigned */
 typedef	unsigned char  BYTE;		/* 8 bit unsigned */
 
+/* memwrt -- every CPU store goes through here.  The -b EPROM window
+ * ([0, rom_top)) behaves like the real chip: the store is dropped (and
+ * reported once per address on stderr), so firmware that keeps a mutable
+ * cell in ROM misbehaves in the emulator the same way it does on the
+ * machine.  rom_top = 0 (no -b image) leaves the whole 64K plain RAM. */
+void rom_wrdrop(int addr, BYTE val);
+static inline void memwrt(int addr, BYTE val)
+{
+	extern BYTE ram[];
+	extern int rom_top;
+
+	if (addr < rom_top) {
+		rom_wrdrop(addr, val);
+		return;
+	}
+	ram[addr] = val;
+}
+
 #ifdef HISIZE
 struct history {			/* structure of a history entry */
 	WORD	h_adr;			/* address of execution */

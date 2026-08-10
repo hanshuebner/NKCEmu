@@ -414,97 +414,97 @@ static int op_tb7ixd(int data)		/* BIT 7,(IX+d) */
 
 static int op_rb0ixd(int data)		/* RES 0,(IX+d) */
 {
-	*(ram +	IX + data) &= ~1;
+	memwrt(IX + data, *(ram + IX + data) & (~1));
 	return(23);
 }
 
 static int op_rb1ixd(int data)		/* RES 1,(IX+d) */
 {
-	*(ram +	IX + data) &= ~2;
+	memwrt(IX + data, *(ram + IX + data) & (~2));
 	return(23);
 }
 
 static int op_rb2ixd(int data)		/* RES 2,(IX+d) */
 {
-	*(ram +	IX + data) &= ~4;
+	memwrt(IX + data, *(ram + IX + data) & (~4));
 	return(23);
 }
 
 static int op_rb3ixd(int data)		/* RES 3,(IX+d) */
 {
-	*(ram +	IX + data) &= ~8;
+	memwrt(IX + data, *(ram + IX + data) & (~8));
 	return(23);
 }
 
 static int op_rb4ixd(int data)		/* RES 4,(IX+d) */
 {
-	*(ram +	IX + data) &= ~16;
+	memwrt(IX + data, *(ram + IX + data) & (~16));
 	return(23);
 }
 
 static int op_rb5ixd(int data)		/* RES 5,(IX+d) */
 {
-	*(ram +	IX + data) &= ~32;
+	memwrt(IX + data, *(ram + IX + data) & (~32));
 	return(23);
 }
 
 static int op_rb6ixd(int data)		/* RES 6,(IX+d) */
 {
-	*(ram +	IX + data) &= ~64;
+	memwrt(IX + data, *(ram + IX + data) & (~64));
 	return(23);
 }
 
 static int op_rb7ixd(int data)		/* RES 7,(IX+d) */
 {
-	*(ram +	IX + data) &= ~128;
+	memwrt(IX + data, *(ram + IX + data) & (~128));
 	return(23);
 }
 
 static int op_sb0ixd(int data)		/* SET 0,(IX+d) */
 {
-	*(ram +	IX + data) |= 1;
+	memwrt(IX + data, *(ram + IX + data) | (1));
 	return(23);
 }
 
 static int op_sb1ixd(int data)		/* SET 1,(IX+d) */
 {
-	*(ram +	IX + data) |= 2;
+	memwrt(IX + data, *(ram + IX + data) | (2));
 	return(23);
 }
 
 static int op_sb2ixd(int data)		/* SET 2,(IX+d) */
 {
-	*(ram +	IX + data) |= 4;
+	memwrt(IX + data, *(ram + IX + data) | (4));
 	return(23);
 }
 
 static int op_sb3ixd(int data)		/* SET 3,(IX+d) */
 {
-	*(ram +	IX + data) |= 8;
+	memwrt(IX + data, *(ram + IX + data) | (8));
 	return(23);
 }
 
 static int op_sb4ixd(int data)		/* SET 4,(IX+d) */
 {
-	*(ram +	IX + data) |= 16;
+	memwrt(IX + data, *(ram + IX + data) | (16));
 	return(23);
 }
 
 static int op_sb5ixd(int data)		/* SET 5,(IX+d) */
 {
-	*(ram +	IX + data) |= 32;
+	memwrt(IX + data, *(ram + IX + data) | (32));
 	return(23);
 }
 
 static int op_sb6ixd(int data)		/* SET 6,(IX+d) */
 {
-	*(ram +	IX + data) |= 64;
+	memwrt(IX + data, *(ram + IX + data) | (64));
 	return(23);
 }
 
 static int op_sb7ixd(int data)		/* SET 7,(IX+d) */
 {
-	*(ram +	IX + data) |= 128;
+	memwrt(IX + data, *(ram + IX + data) | (128));
 	return(23);
 }
 
@@ -517,8 +517,8 @@ static int op_rlcixd(int data)		/* RLC (IX+d) */
 	i = *p & 128;
 	(i) ? (F |= C_FLAG) : (F &= ~C_FLAG);
 	F &= ~(H_FLAG |	N_FLAG);
-	*p <<= 1;
-	if (i) *p |= 1;
+	memwrt(p - ram, *p << (1));
+	if (i) memwrt(p - ram, *p | (1));
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
 	(parrity[*p]) ?	(F &= ~P_FLAG) : (F |= P_FLAG);
@@ -534,8 +534,8 @@ static int op_rrcixd(int data)		/* RRC (IX+d) */
 	i = *p & 1;
 	(i) ? (F |= C_FLAG) : (F &= ~C_FLAG);
 	F &= ~(H_FLAG |	N_FLAG);
-	*p >>= 1;
-	if (i) *p |= 128;
+	memwrt(p - ram, *p >> (1));
+	if (i) memwrt(p - ram, *p | (128));
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
 	(parrity[*p]) ?	(F &= ~P_FLAG) : (F |= P_FLAG);
@@ -550,8 +550,8 @@ static int op_rlixd(int data)		/* RL (IX+d) */
 	p = ram	+ IX + data;
 	old_c_flag = F & C_FLAG;
 	(*p & 128) ? (F	|= C_FLAG) : (F	&= ~C_FLAG);
-	*p <<= 1;
-	if (old_c_flag)	*p |= 1;
+	memwrt(p - ram, *p << (1));
+	if (old_c_flag)	memwrt(p - ram, *p | (1));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
@@ -567,8 +567,8 @@ static int op_rrixd(int data)		/* RR (IX+d) */
 	old_c_flag = F & C_FLAG;
 	p = ram	+ IX + data;
 	(*p & 1) ? (F |= C_FLAG) : (F &= ~C_FLAG);
-	*p >>= 1;
-	if (old_c_flag)	*p |= 128;
+	memwrt(p - ram, *p >> (1));
+	if (old_c_flag)	memwrt(p - ram, *p | (128));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
@@ -582,7 +582,7 @@ static int op_slaixd(int data)		/* SLA (IX+d) */
 
 	p = ram	+ IX + data;
 	(*p & 128) ? (F	|= C_FLAG) : (F	&= ~C_FLAG);
-	*p <<= 1;
+	memwrt(p - ram, *p << (1));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
@@ -598,8 +598,8 @@ static int op_sraixd(int data)		/* SRA (IX+d) */
 	p = ram	+ IX + data;
 	i = *p & 128;
 	(*p & 1) ? (F |= C_FLAG) : (F &= ~C_FLAG);
-	*p >>= 1;
-	*p |= i;
+	memwrt(p - ram, *p >> (1));
+	memwrt(p - ram, *p | (i));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
@@ -613,7 +613,7 @@ static int op_srlixd(int data)		/* SRL (IX+d) */
 
 	p = ram	+ IX + data;
 	(*p & 1) ? (F |= C_FLAG) : (F &= ~C_FLAG);
-	*p >>= 1;
+	memwrt(p - ram, *p >> (1));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);

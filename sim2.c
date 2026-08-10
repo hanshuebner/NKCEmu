@@ -471,7 +471,7 @@ static int op_srlhl(void)		/* SRL (HL) */
 
 	p = ram	+ (H <<	8) + L;
 	(*p & 1) ? (F |= C_FLAG) : (F &= ~C_FLAG);
-	*p >>= 1;
+	memwrt(p - ram, *p >> (1));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
@@ -562,7 +562,7 @@ static int op_slahl(void)		/* SLA (HL) */
 
 	p = ram	+ (H <<	8) + L;
 	(*p & 128) ? (F	|= C_FLAG) : (F	&= ~C_FLAG);
-	*p <<= 1;
+	memwrt(p - ram, *p << (1));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
@@ -683,8 +683,8 @@ static int op_rlhl(void)		/* RL (HL) */
 	p = ram	+ (H <<	8) + L;
 	old_c_flag = F & C_FLAG;
 	(*p & 128) ? (F	|= C_FLAG) : (F	&= ~C_FLAG);
-	*p <<= 1;
-	if (old_c_flag)	*p |= 1;
+	memwrt(p - ram, *p << (1));
+	if (old_c_flag)	memwrt(p - ram, *p | (1));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
@@ -805,8 +805,8 @@ static int op_rrhl(void)		/* RR (HL) */
 	old_c_flag = F & C_FLAG;
 	p = ram	+ (H <<	8) + L;
 	(*p & 1) ? (F |= C_FLAG) : (F &= ~C_FLAG);
-	*p >>= 1;
-	if (old_c_flag)	*p |= 128;
+	memwrt(p - ram, *p >> (1));
+	if (old_c_flag)	memwrt(p - ram, *p | (128));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
@@ -928,8 +928,8 @@ static int op_rrchl(void)		/* RRC (HL) */
 	i = *p & 1;
 	(i) ? (F |= C_FLAG) : (F &= ~C_FLAG);
 	F &= ~(H_FLAG |	N_FLAG);
-	*p >>= 1;
-	if (i) *p |= 128;
+	memwrt(p - ram, *p >> (1));
+	if (i) memwrt(p - ram, *p | (128));
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
 	(parrity[*p]) ?	(F &= ~P_FLAG) : (F |= P_FLAG);
@@ -1050,8 +1050,8 @@ static int op_rlchl(void)		/* RLC (HL) */
 	i = *p & 128;
 	(i) ? (F |= C_FLAG) : (F &= ~C_FLAG);
 	F &= ~(H_FLAG |	N_FLAG);
-	*p <<= 1;
-	if (i) *p |= 1;
+	memwrt(p - ram, *p << (1));
+	if (i) memwrt(p - ram, *p | (1));
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
 	(parrity[*p]) ?	(F &= ~P_FLAG) : (F |= P_FLAG);
@@ -1171,8 +1171,8 @@ static int op_srahl(void)		/* SRA (HL) */
 	p = ram	+ (H <<	8) + L;
 	i = *p & 128;
 	(*p & 1) ? (F |= C_FLAG) : (F &= ~C_FLAG);
-	*p >>= 1;
-	*p |= i;
+	memwrt(p - ram, *p >> (1));
+	memwrt(p - ram, *p | (i));
 	F &= ~(H_FLAG |	N_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
@@ -1518,49 +1518,49 @@ static int op_sb7l(void)		/* SET 7,L */
 
 static int op_sb0hl(void)		/* SET 0,(HL) */
 {
-	*(ram +	(H << 8) + L) |= 1;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) | (1));
 	return(15);
 }
 
 static int op_sb1hl(void)		/* SET 1,(HL) */
 {
-	*(ram +	(H << 8) + L) |= 2;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) | (2));
 	return(15);
 }
 
 static int op_sb2hl(void)		/* SET 2,(HL) */
 {
-	*(ram +	(H << 8) + L) |= 4;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) | (4));
 	return(15);
 }
 
 static int op_sb3hl(void)		/* SET 3,(HL) */
 {
-	*(ram +	(H << 8) + L) |= 8;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) | (8));
 	return(15);
 }
 
 static int op_sb4hl(void)		/* SET 4,(HL) */
 {
-	*(ram +	(H << 8) + L) |= 16;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) | (16));
 	return(15);
 }
 
 static int op_sb5hl(void)		/* SET 5,(HL) */
 {
-	*(ram +	(H << 8) + L) |= 32;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) | (32));
 	return(15);
 }
 
 static int op_sb6hl(void)		/* SET 6,(HL) */
 {
-	*(ram +	(H << 8) + L) |= 64;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) | (64));
 	return(15);
 }
 
 static int op_sb7hl(void)		/* SET 7,(HL) */
 {
-	*(ram +	(H << 8) + L) |= 128;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) | (128));
 	return(15);
 }
 
@@ -1902,49 +1902,49 @@ static int op_rb7l(void)		/* RES 7,L */
 
 static int op_rb0hl(void)		/* RES 0,(HL) */
 {
-	*(ram +	(H << 8) + L) &= ~1;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) & (~1));
 	return(15);
 }
 
 static int op_rb1hl(void)		/* RES 1,(HL) */
 {
-	*(ram +	(H << 8) + L) &= ~2;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) & (~2));
 	return(15);
 }
 
 static int op_rb2hl(void)		/* RES 2,(HL) */
 {
-	*(ram +	(H << 8) + L) &= ~4;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) & (~4));
 	return(15);
 }
 
 static int op_rb3hl(void)		/* RES 3,(HL) */
 {
-	*(ram +	(H << 8) + L) &= ~8;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) & (~8));
 	return(15);
 }
 
 static int op_rb4hl(void)		/* RES 4,(HL) */
 {
-	*(ram +	(H << 8) + L) &= ~16;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) & (~16));
 	return(15);
 }
 
 static int op_rb5hl(void)		/* RES 5,(HL) */
 {
-	*(ram +	(H << 8) + L) &= ~32;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) & (~32));
 	return(15);
 }
 
 static int op_rb6hl(void)		/* RES 6,(HL) */
 {
-	*(ram +	(H << 8) + L) &= ~64;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) & (~64));
 	return(15);
 }
 
 static int op_rb7hl(void)		/* RES 7,(HL) */
 {
-	*(ram +	(H << 8) + L) &= ~128;
+	memwrt((H << 8) + L, *(ram + (H << 8) + L) & (~128));
 	return(15);
 }
 

@@ -31,6 +31,7 @@ extern int	F,F_;
 extern long	R;
 
 extern BYTE	ram[],*wrk_ram;
+extern int	rom_top;
 
 extern int	s_flag,l_flag,m_flag,x_flag,break_flag,i_flag,f_flag,
 		cpu_state, cpu_error,int_type,int_mode,cntl_c,cntl_bs,

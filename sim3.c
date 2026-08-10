@@ -358,12 +358,12 @@ static int op_pusix(void)		/* PUSH IX */
 	if (STACK <= ram)
 		STACK =	ram + 65536L;
 #endif
-	*--STACK = IX >> 8;
+	{ STACK--; memwrt(STACK - ram, IX >> 8); }
 #ifdef WANT_SPC
 	if (STACK <= ram)
 		STACK =	ram + 65536L;
 #endif
-	*--STACK = IX;
+	{ STACK--; memwrt(STACK - ram, IX); }
 	return(15);
 }
 
@@ -378,8 +378,8 @@ static int op_exspx(void)		/* EX (SP),IX */
 	register int i;
 
 	i = *STACK + (*(STACK +	1) << 8);
-	*STACK = IX;
-	*(STACK	+ 1) = IX >> 8;
+	memwrt(STACK - ram, IX);
+	memwrt(STACK - ram + 1, IX >> 8);
 	IX = i;
 	return(23);
 }
@@ -414,8 +414,8 @@ static int op_ldinx(void)		/* LD (nn),IX */
 
 	p = ram	+ *PC++;
 	p += *PC++ << 8;
-	*p++ = IX;
-	*p = IX	>> 8;
+	{ memwrt(p - ram, IX); p++; }
+	memwrt(p - ram, IX	>> 8);
 	return(20);
 }
 
@@ -538,7 +538,7 @@ static int op_incxd(void)		/* INC (IX+d) */
 
 	p = ram	+ IX + (char) *PC++;
 	((*p & 0xf) + 1	> 0xf) ? (F |= H_FLAG) : (F &= ~H_FLAG);
-	(*p)++;
+	memwrt(p - ram, *p + 1);
 	(*p == 128) ? (F |= P_FLAG) : (F &= ~P_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
@@ -552,7 +552,7 @@ static int op_decxd(void)		/* DEC (IX+d) */
 
 	p = ram	+ IX + (char) *PC++;
 	(((*p - 1) & 0xf)	== 0xf)	? (F |=	H_FLAG)	: (F &=	~H_FLAG);
-	(*p)--;
+	memwrt(p - ram, *p - 1);
 	(*p == 127) ? (F |= P_FLAG) : (F &= ~P_FLAG);
 	(*p & 128) ? (F	|= S_FLAG) : (F	&= ~S_FLAG);
 	(*p) ? (F &= ~Z_FLAG) :	(F |= Z_FLAG);
@@ -682,43 +682,43 @@ static int op_ldlxd(void)		/* LD L,(IX+d) */
 
 static int op_ldxda(void)		/* LD (IX+d),A */
 {
-	*(IX + (char) *PC++ + ram) = A;
+	memwrt(IX + (char) *PC++, A);
 	return(19);
 }
 
 static int op_ldxdb(void)		/* LD (IX+d),B */
 {
-	*(IX + (char) *PC++ + ram) = B;
+	memwrt(IX + (char) *PC++, B);
 	return(19);
 }
 
 static int op_ldxdc(void)		/* LD (IX+d),C */
 {
-	*(IX + (char) *PC++ + ram) = C;
+	memwrt(IX + (char) *PC++, C);
 	return(19);
 }
 
 static int op_ldxdd(void)		/* LD (IX+d),D */
 {
-	*(IX + (char) *PC++ + ram) = D;
+	memwrt(IX + (char) *PC++, D);
 	return(19);
 }
 
 static int op_ldxde(void)		/* LD (IX+d),E */
 {
-	*(IX + (char) *PC++ + ram) = E;
+	memwrt(IX + (char) *PC++, E);
 	return(19);
 }
 
 static int op_ldxdh(void)		/* LD (IX+d),H */
 {
-	*(IX + (char) *PC++ + ram) = H;
+	memwrt(IX + (char) *PC++, H);
 	return(19);
 }
 
 static int op_ldxdl(void)		/* LD (IX+d),L */
 {
-	*(IX + (char) *PC++ + ram) = L;
+	memwrt(IX + (char) *PC++, L);
 	return(19);
 }
 
@@ -727,6 +727,6 @@ static int op_ldxdn(void)		/* LD (IX+d),n */
 	register int d;
 
 	d = (char) *PC++;
-	*(IX + d + ram)	= *PC++;
+	memwrt(IX + d, *PC++);
 	return(19);
 }

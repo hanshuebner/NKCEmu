@@ -85,6 +85,8 @@ int l_flag;			/* flag	for -l option */
 int m_flag;			/* flag	for -m option */
 int x_flag;			/* flag	for -x option */
 int b_flag;         /* flag for -b option */
+int rom_top;        /* first address above the write-protected -b EPROM
+                     * window (0 = none loaded, whole 64K is RAM) */
 int i_flag;			/* flag for -i option */
 int f_flag;			/* flag for -f option */
 char xfn[LENCMD];		/* buffer for filename (option -x) */

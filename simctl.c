@@ -1003,8 +1003,29 @@ static int load_eeprom(int fd, char *fn)
     printf("START : %04x\n", (unsigned int)(wrk_ram - ram));
     printf("END   : %04x\n", (unsigned int)(wrk_ram - ram + readed - 1));
     printf("LOADED: %04x\n", readed);
+    if (wrk_ram == ram) {       /* EPROM at $0000: CPU stores into its
+                                 * window are dropped, as on the chip */
+        rom_top = readed;
+        printf("ROM   : 0000-%04x write-protected\n", readed - 1);
+    }
     PC = wrk_ram;
     return(rc);
+}
+
+/*
+ *  A CPU store aimed at the -b EPROM window (see memwrt in sim.h) lands
+ *  here instead of in ram[]; report each affected address once, so buggy
+ *  firmware that keeps a variable in ROM shows up in any log.
+ */
+void rom_wrdrop(int addr, BYTE val)
+{
+    static char seen[65536];
+
+    if (addr < 0 || addr > 65535 || seen[addr])
+        return;
+    seen[addr] = 1;
+    fprintf(stderr, "nkcemu: write of %02x into ROM at %04x dropped\r\n",
+            val, addr);
 }
 
 

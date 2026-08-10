@@ -550,7 +550,7 @@ static int op_ini(void)			/* INI */
 {
 	BYTE io_in();
 
-	*(ram +	(H << 8) + L) =	io_in(C);
+	memwrt((H << 8) + L, io_in(C));
 	L++;
 	if (!L)
 		H++;
@@ -568,7 +568,7 @@ static int op_inir(void)		/* INIR */
 
 	d = ram	+ (H <<	8) + L;
 	do {
-		*d++ = io_in(C);
+		{ memwrt(d - ram, io_in(C)); d++; }
 		B--;
 		t += 21;
 	} while	(B);
@@ -582,7 +582,7 @@ static int op_ind(void)			/* IND */
 {
 	BYTE io_in();
 
-	*(ram +	(H << 8) + L) =	io_in(C);
+	memwrt((H << 8) + L, io_in(C));
 	L--;
 	if (L == 0xff)
 		H--;
@@ -600,7 +600,7 @@ static int op_indr(void)		/* INDR */
 
 	d = ram	+ (H <<	8) + L;
 	do {
-		*d-- = io_in(C);
+		{ memwrt(d - ram, io_in(C)); d--; }
 		B--;
 		t += 21;
 	} while	(B);
@@ -745,8 +745,8 @@ static int op_ldinbc(void)		/* LD (nn),BC */
 
 	p = ram	+ *PC++;
 	p += *PC++ << 8;
-	*p++ = C;
-	*p = B;
+	{ memwrt(p - ram, C); p++; }
+	memwrt(p - ram, B);
 	return(20);
 }
 
@@ -756,8 +756,8 @@ static int op_ldinde(void)		/* LD (nn),DE */
 
 	p = ram	+ *PC++;
 	p += *PC++ << 8;
-	*p++ = E;
-	*p = D;
+	{ memwrt(p - ram, E); p++; }
+	memwrt(p - ram, D);
 	return(20);
 }
 
@@ -769,8 +769,8 @@ static int op_ldinsp(void)		/* LD (nn),SP */
 	p = ram	+ *PC++;
 	p += *PC++ << 8;
 	i = STACK - ram;
-	*p++ = i;
-	*p = i >> 8;
+	{ memwrt(p - ram, i); p++; }
+	memwrt(p - ram, i >> 8);
 	return(20);
 }
 
@@ -957,7 +957,7 @@ static int op_sbchs(void)		/* SBC HL,SP */
 
 static int op_ldi(void)			/* LDI */
 {
-	*(ram +	(D << 8) + E) =	*(ram +	(H << 8) + L);
+	memwrt((D << 8) + E, *(ram +	(H << 8) + L));
 	E++;
 	if (!E)
 		D++;
@@ -982,7 +982,7 @@ static int op_ldir(void)		/* LDIR */
 	d = ram	+ (D <<	8) + E;
 	s = ram	+ (H <<	8) + L;
 	do {
-		*d++ = *s++;
+		{ memwrt(d - ram, *s++); d++; }
 		t += 21;
 	} while	(--i);
 	B = C =	0;
@@ -996,7 +996,7 @@ static int op_ldir(void)		/* LDIR */
 
 static int op_ldd(void)			/* LDD */
 {
-	*(ram +	(D << 8) + E) =	*(ram +	(H << 8) + L);
+	memwrt((D << 8) + E, *(ram +	(H << 8) + L));
 	E--;
 	if (E == 0xff)
 		D--;
@@ -1021,7 +1021,7 @@ static int op_lddr(void)		/* LDDR */
 	d = ram	+ (D <<	8) + E;
 	s = ram	+ (H <<	8) + L;
 	do {
-		*d-- = *s--;
+		{ memwrt(d - ram, *s--); d--; }
 		t += 21;
 	} while	(--i);
 	B = C =	0;
@@ -1131,7 +1131,7 @@ static int op_oprld(void)	/* RLD (HL) */
 	j = A &	0x0f;
 	A = (A & 0xf0) | (i >> 4);
 	i = (i << 4) | j;
-	*(ram +	(H << 8) + L) =	i;
+	memwrt((H << 8) + L, i);
 	F &= ~(H_FLAG |	N_FLAG);
 	(A) ? (F &= ~Z_FLAG) : (F |= Z_FLAG);
 	(A & 128) ? (F |= S_FLAG) : (F &= ~S_FLAG);
@@ -1147,7 +1147,7 @@ static int op_oprrd(void)	/* RRD (HL) */
 	j = A &	0x0f;
 	A = (A & 0xf0) | (i & 0x0f);
 	i = (i >> 4) | (j << 4);
-	*(ram +	(H << 8) + L) =	i;
+	memwrt((H << 8) + L, i);
 	F &= ~(H_FLAG |	N_FLAG);
 	(A) ? (F &= ~Z_FLAG) : (F |= Z_FLAG);
 	(A & 128) ? (F |= S_FLAG) : (F &= ~S_FLAG);

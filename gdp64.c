@@ -1006,6 +1006,13 @@ BYTE key_p68_in()
      * ESCAPE polls don't swallow scripted characters. */
     if (injbuf && injpos < injlen) {
         if (injgap > 0) return 0x80;    /* "key up" gap (timed by vsync) */
+        if (injbuf[injpos] == 0) {      /* NUL in the script: ~1 s pause, so
+                                         * the guest's idle blink runs between
+                                         * keystrokes as it does interactively */
+            injpos++;
+            injgap = 50;
+            return 0x80;
+        }
         return injbuf[injpos] & 0x7F;   /* bit7 clear = char present */
     }
 
