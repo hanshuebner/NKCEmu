@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)   # FetchContent_MakeAvailable
 project(nkcemu C)
 
-add_executable(nkcemu sim1.c sim2.c sim3.c sim4.c sim5.c sim6.c sim7.c simctl.c simfun.c simglb.c simint.c gdp64.c iosim.c disas.c cas.c vdip.c flo3.c timer.c ser2.c nkcemu.c)
+add_executable(nkcemu sim1.c sim2.c sim3.c sim4.c sim5.c sim6.c sim7.c simctl.c simfun.c simglb.c simint.c gdp64.c iosim.c disas.c cas.c vdip.c flo3.c bote.c timer.c ser2.c nkcemu.c)
 
 # Locate SDL2.  Three tiers, most-preferred first:
 #   1. pkg-config (Homebrew/Linux): links the dylib by its absolute install

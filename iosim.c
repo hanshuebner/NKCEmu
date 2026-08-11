@@ -56,6 +56,10 @@ static void ay_p51_out(BYTE);
 extern BYTE gdp64_p60_in();
 extern void gdp64_p60_out(BYTE);
 extern void gdp64_p61_out(BYTE);
+extern BYTE bote_p58_in();
+extern void bote_p58_out(BYTE);
+extern BYTE bote_p59_in();
+extern void bote_p59_out(BYTE);
 extern BYTE key_p68_in();
 extern void key_p68_out(BYTE);
 extern BYTE key_p69_in();
@@ -136,6 +140,10 @@ void init_io(bool windowed)
     out_port[0x50]=ay_p50_out;      /* SOUND card (AY-3-8910 register file) */
     in_port[0x51]=ay_p51_in;
     out_port[0x51]=ay_p51_out;
+    in_port[0x58]=bote_p58_in;   /* bote card (score courier) */
+    out_port[0x58]=bote_p58_out;
+    in_port[0x59]=bote_p59_in;
+    out_port[0x59]=bote_p59_out;
     in_port[0x68]=key_p68_in;
     out_port[0x68]=key_p68_out;
     in_port[0x69]=key_p69_in;
