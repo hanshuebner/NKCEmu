@@ -8,7 +8,8 @@
  * BUSY and a program developed against this emulator still polls it, as the
  * real card does stand busy.
  *
- * NKC_BOTE names the server as host:port (default 127.0.0.1:8137) and
+ * NKC_BOTE names the server as host:port (default scores.netmbx.org:8137,
+ * the league's own board, as the hanse firmware defaults to) and
  * NKC_BOTE_PATH the path (default /).  A server that cannot be reached
  * leaves the FAILED bit, which is what the far end of a broken network
  * looks like on the real card too.
@@ -59,7 +60,7 @@ static int carry(void)
     int fd = -1, rawlen = 0, n;
     char *body;
 
-    snprintf(host, sizeof(host), "%s", spec && *spec ? spec : "127.0.0.1");
+    snprintf(host, sizeof(host), "%s", spec && *spec ? spec : "scores.netmbx.org");
     {
         char *colon = strrchr(host, ':');
         if (colon) {
